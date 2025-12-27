@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+@theme {
+  /* Numberblocks official color palette */
+  --color-nb-1: #FF0000;  /* Red */
+  --color-nb-2: #FF8C00;  /* Orange */
+  --color-nb-3: #FFD700;  /* Yellow */
+  --color-nb-4: #00CC00;  /* Green */
+  --color-nb-5: #00BFFF;  /* Cyan */
+  --color-nb-6: #4B0082;  /* Indigo */
+  --color-nb-7: #8B00FF;  /* Violet */
+  --color-nb-8: #FF00FF;  /* Magenta */
+  --color-nb-9: #808080;  /* Grey */
+  --color-nb-10: #FFFFFF; /* White */
+
+  /* UI accent colors */
+  --color-accent-pink: #FF6B9D;
+  --color-accent-purple: #9B5DE5;
+
+  /* Background colors */
+  --color-cloud-light: #FFF5F7;
+  --color-cloud: #F0F9FF;
+  --color-cloud-lavender: #F5F3FF;
+
+  /* Shadows */
+  --shadow-playful: 0 4px 14px 0 rgba(0, 0, 0, 0.1);
+  --shadow-block: 0 4px 0 0 rgba(0, 0, 0, 0.2);
+  --shadow-block-hover: 0 6px 0 0 rgba(0, 0, 0, 0.2);
+  --shadow-mirror: inset 0 2px 20px rgba(255, 255, 255, 0.5), 0 4px 20px rgba(0, 0, 0, 0.1);
+
+  /* Cube dimensions */
+  --cube-size: 48px;
+  --cube-gap: 2px;
+  --face-size: 32px;
+}
+
+@keyframes bounce-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+@keyframes pop {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(155, 93, 229, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(155, 93, 229, 0.6); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@layer base {
+  :root {
+    font-family: 'Nunito', 'Quicksand', system-ui, sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    touch-action: manipulation;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: linear-gradient(135deg, var(--color-cloud-light) 0%, var(--color-cloud) 50%, var(--color-cloud-lavender) 100%);
+    overflow: hidden;
+    transition: background 0.3s ease;
+  }
+
+  /* Dark mode styles */
+  .dark body {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  }
+
+  .dark .mirror {
+    background: linear-gradient(135deg, rgba(30,30,50,0.9) 0%, rgba(40,50,80,0.8) 100%);
+    border-color: rgba(155, 93, 229, 0.7);
+  }
+
+  .dark .mirror-label {
+    background: rgba(30, 30, 50, 0.9);
+    color: #c4b5fd;
+  }
+
+  .dark .block-label {
+    color: #e5e7eb;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+
+  .dark .spawn-label {
+    color: #9ca3af;
+  }
+}
+
+@layer components {
+  /* Single cube unit */
+  .cube {
+    width: var(--cube-size);
+    height: var(--cube-size);
+    border-radius: 8px;
+    position: relative;
+    box-shadow:
+      inset 0 -4px 0 rgba(0, 0, 0, 0.2),
+      inset 0 4px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  /* Face on top cube */
+  .cube-face {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--face-size);
+    height: var(--face-size);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  /* Eyes */
+  .cube-eyes {
+    display: flex;
+    gap: 6px;
+    margin-top: -4px;
+  }
+
+  .cube-eye {
+    width: 11px;
+    height: 15px;
+    background: white;
+    border-radius: 50%;
+    position: relative;
+    border: 1px solid #333;
+  }
+
+  .cube-eye::after {
+    content: '';
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    background: #333;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Mouth - slightly curved, higher on one side */
+  .cube-mouth {
+    width: 20px;
+    height: 6px;
+    background: #333;
+    border-radius: 0 0 12px 8px;
+    margin-top: 4px;
+    transform: rotate(-3deg);
+  }
+
+  /* Mirror spawner */
+  .mirror {
+    background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(200,220,255,0.8) 100%);
+    border: 3px solid rgba(155, 93, 229, 0.5);
+    border-radius: 16px;
+    box-shadow: var(--shadow-mirror);
+    animation: pulse-glow 2s ease-in-out infinite;
+    backdrop-filter: blur(8px);
+  }
+
+  .mirror::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+    border-radius: 14px;
+  }
+
+  /* Touch targets */
+  .touch-target {
+    min-width: var(--cube-size);
+    min-height: var(--cube-size);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Shadow utilities */
+  .shadow-playful {
+    box-shadow: var(--shadow-playful);
+  }
+
+  .shadow-block {
+    box-shadow: var(--shadow-block);
+  }
+}
+
+@layer utilities {
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .drag-none {
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+}

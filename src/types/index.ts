@@ -1,0 +1,184 @@
+// Numberblocks official color palette
+export const NUMBERBLOCK_COLORS: Record<number, string> = {
+  1: '#FF0000',  // Red
+  2: '#FF8C00',  // Orange
+  3: '#FFD700',  // Yellow
+  4: '#00CC00',  // Green
+  5: '#00BFFF',  // Cyan
+  6: '#4B0082',  // Indigo
+  7: '#8B00FF',  // Violet
+  8: '#FF00FF',  // Magenta
+  9: '#808080',  // Grey
+  10: '#FFFFFF', // White (with red stripe pattern)
+};
+
+// For numbers > 10, we cycle or use patterns
+export function getNumberBlockColor(value: number): string {
+  if (value <= 10) {
+    return NUMBERBLOCK_COLORS[value];
+  }
+  // For larger numbers, use the ones digit color with modifications
+  const onesDigit = value % 10 || 10;
+  return NUMBERBLOCK_COLORS[onesDigit];
+}
+
+// Check if number needs stripe pattern (multiples of 10)
+export function needsStripePattern(value: number): boolean {
+  return value >= 10 && value % 10 === 0;
+}
+
+// Position in 2D space
+export interface Position {
+  x: number;
+  y: number;
+}
+
+// Size dimensions
+export interface Size {
+  width: number;
+  height: number;
+}
+
+// Bounding box for collision detection
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// NumberBlock entity
+export interface NumberBlock {
+  id: string;
+  value: number;
+  position: Position;
+  isDragging: boolean;
+}
+
+// Letter block (for future use)
+export interface LetterBlock {
+  id: string;
+  letter: string;
+  position: Position;
+  isDragging: boolean;
+}
+
+// Block type discriminator
+export type Block =
+  | { type: 'number'; data: NumberBlock }
+  | { type: 'letter'; data: LetterBlock };
+
+// Cube dimensions (each unit cube in a stack)
+export const CUBE_SIZE = 48; // pixels, matches touch target minimum
+export const CUBE_GAP = 2;   // small gap between stacked cubes
+export const FACE_SIZE = 32; // size of the face on top cube
+
+// Calculate block dimensions based on value
+export function getBlockDimensions(value: number): Size {
+  // 4 is a 2x2 square
+  if (value === 4) {
+    return {
+      width: CUBE_SIZE * 2 + CUBE_GAP,
+      height: CUBE_SIZE * 2 + CUBE_GAP,
+    };
+  }
+
+  // 7 is special - always vertical (rainbow tower)
+  if (value === 7) {
+    return {
+      width: CUBE_SIZE,
+      height: value * CUBE_SIZE + (value - 1) * CUBE_GAP,
+    };
+  }
+
+  // 9 is a 3x3 square
+  if (value === 9) {
+    return {
+      width: CUBE_SIZE * 3 + CUBE_GAP * 2,
+      height: CUBE_SIZE * 3 + CUBE_GAP * 2,
+    };
+  }
+
+  // Blocks stack vertically for values 1-3, 5
+  if (value <= 5) {
+    return {
+      width: CUBE_SIZE,
+      height: value * CUBE_SIZE + (value - 1) * CUBE_GAP,
+    };
+  }
+
+  // 6-29: 2 columns wide
+  // 30-39: 3 columns, 40-49: 4 columns, etc.
+  // Column count matches tens digit for 30+
+  let cols = 2;
+  if (value >= 30) {
+    cols = Math.floor(value / 10);
+  }
+  const rows = Math.ceil(value / cols);
+  return {
+    width: cols * CUBE_SIZE + (cols - 1) * CUBE_GAP,
+    height: rows * CUBE_SIZE + (rows - 1) * CUBE_GAP,
+  };
+}
+
+// Get bounding box for a number block
+export function getBlockBoundingBox(block: NumberBlock): BoundingBox {
+  const dims = getBlockDimensions(block.value);
+  return {
+    x: block.position.x,
+    y: block.position.y,
+    width: dims.width,
+    height: dims.height,
+  };
+}
+
+// Check if two bounding boxes overlap
+export function boxesOverlap(a: BoundingBox, b: BoundingBox): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+// Check if two number blocks are colliding
+export function blocksCollide(a: NumberBlock, b: NumberBlock): boolean {
+  return boxesOverlap(getBlockBoundingBox(a), getBlockBoundingBox(b));
+}
+
+// Voice input types
+export interface VoiceInputState {
+  isListening: boolean;
+  transcript: string;
+  error: string | null;
+  isSupported: boolean;
+}
+
+// LLM types
+export interface LLMMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+export interface LLMRequest {
+  messages: LLMMessage[];
+  maxTokens?: number;
+}
+
+export interface LLMResponse {
+  content: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+}
+
+// Utility type for component props
+export interface WithChildren {
+  children?: React.ReactNode;
+}
+
+export interface WithClassName {
+  className?: string;
+}
