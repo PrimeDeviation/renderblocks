@@ -1,5 +1,5 @@
 import { motion, type PanInfo } from 'framer-motion';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState, useEffect, type RefObject } from 'react';
 import {
   CUBE_SIZE,
   CUBE_GAP,
@@ -8,74 +8,126 @@ import {
   type Position,
 } from '../../types';
 
+// Cooldown period for new blocks (ms)
+const BLOCK_COOLDOWN_MS = 150;
+
 interface NumberBlockProps {
   id: string;
   value: number;
   position: Position;
+  createdAt: number;
   isDragging?: boolean;
+  dragConstraints?: RefObject<HTMLElement | null> | { left: number; top: number; right: number; bottom: number };
   onDragStart?: (id: string) => void;
   onDrag?: (id: string, position: Position) => void;
   onDragEnd?: (id: string, position: Position) => void;
   onRightClick?: (id: string, value: number, position: { x: number; y: number }) => void;
 }
 
-// Generate cube positions for a given value
-function getCubePositions(value: number): Position[] {
+// Helper: get positions for a sub-block (used for tens/units remainder)
+function getSubBlockPositions(count: number, offsetX: number, offsetY: number): Position[] {
   const positions: Position[] = [];
+  if (count === 0) return positions;
 
-  // 4 is a 2x2 square
-  if (value === 4) {
+  // Special arrangements for certain numbers
+  if (count === 4) {
+    // 2x2 square
     for (let i = 0; i < 4; i++) {
       const row = Math.floor(i / 2);
       const col = i % 2;
       positions.push({
-        x: col * (CUBE_SIZE + CUBE_GAP),
-        y: (1 - row) * (CUBE_SIZE + CUBE_GAP), // bottom to top
+        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
+        y: offsetY + (1 - row) * (CUBE_SIZE + CUBE_GAP),
       });
     }
-  } else if (value === 7) {
-    // 7 is special - always vertical (rainbow tower)
-    for (let i = 0; i < value; i++) {
+  } else if (count === 7) {
+    // Vertical rainbow tower
+    for (let i = 0; i < count; i++) {
       positions.push({
-        x: 0,
-        y: (value - 1 - i) * (CUBE_SIZE + CUBE_GAP),
+        x: offsetX,
+        y: offsetY + (count - 1 - i) * (CUBE_SIZE + CUBE_GAP),
       });
     }
-  } else if (value === 9) {
-    // 9 is a 3x3 square
+  } else if (count === 9) {
+    // 3x3 square
     for (let i = 0; i < 9; i++) {
       const row = Math.floor(i / 3);
       const col = i % 3;
       positions.push({
-        x: col * (CUBE_SIZE + CUBE_GAP),
-        y: (2 - row) * (CUBE_SIZE + CUBE_GAP), // bottom to top
+        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
+        y: offsetY + (2 - row) * (CUBE_SIZE + CUBE_GAP),
       });
     }
-  } else if (value <= 5) {
-    // Stack vertically (bottom to top)
-    for (let i = 0; i < value; i++) {
+  } else if (count <= 5) {
+    // Vertical stack
+    for (let i = 0; i < count; i++) {
       positions.push({
-        x: 0,
-        y: (value - 1 - i) * (CUBE_SIZE + CUBE_GAP),
+        x: offsetX,
+        y: offsetY + (count - 1 - i) * (CUBE_SIZE + CUBE_GAP),
       });
     }
   } else {
-    // 6-29: 2 columns wide
-    // 30-39: 3 columns, 40-49: 4 columns, etc.
-    // Fill left-to-right, bottom-to-top (remainder at top, odd cubes on left)
+    // 2 columns for 6+
     let cols = 2;
-    if (value >= 30) {
-      cols = Math.floor(value / 10);
-    }
-    const rows = Math.ceil(value / cols);
-    for (let i = 0; i < value; i++) {
+    if (count >= 30) cols = Math.floor(count / 10);
+    const rows = Math.ceil(count / cols);
+    for (let i = 0; i < count; i++) {
       const row = Math.floor(i / cols);
       const col = i % cols;
       positions.push({
-        x: col * (CUBE_SIZE + CUBE_GAP),
-        y: (rows - 1 - row) * (CUBE_SIZE + CUBE_GAP), // bottom to top
+        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
+        y: offsetY + (rows - 1 - row) * (CUBE_SIZE + CUBE_GAP),
       });
     }
+  }
+  return positions;
+}
+
+// Generate cube positions for a given value
+function getCubePositions(value: number): Position[] {
+  // For values < 100, use simple layouts
+  if (value < 100) {
+    return getSubBlockPositions(value, 0, 0);
+  }
+
+  // For values 100-999: arrange hundreds as 10×10 squares
+  const positions: Position[] = [];
+  const hundreds = Math.floor(value / 100);
+  const tensAndUnits = value % 100;
+
+  // Size of a 10×10 hundred-square (including internal gaps)
+  const hundredSquareSize = 10 * CUBE_SIZE + 9 * CUBE_GAP;
+  const hundredSquareSpacing = hundredSquareSize + CUBE_GAP * 2; // gap between squares
+
+  // Arrange hundred-squares: stack vertically for 1-3, then use columns
+  let hundredCols = 1;
+  if (hundreds >= 4) hundredCols = 2;
+  if (hundreds >= 7) hundredCols = 3;
+  const hundredRows = Math.ceil(hundreds / hundredCols);
+
+  // Generate positions for cubes in hundred-squares
+  for (let i = 0; i < hundreds * 100; i++) {
+    const whichHundred = Math.floor(i / 100);
+    const posInHundred = i % 100;
+
+    const hRow = Math.floor(whichHundred / hundredCols);
+    const hCol = whichHundred % hundredCols;
+
+    const cubeRow = Math.floor(posInHundred / 10);
+    const cubeCol = posInHundred % 10;
+
+    positions.push({
+      x: hCol * hundredSquareSpacing + cubeCol * (CUBE_SIZE + CUBE_GAP),
+      y: (hundredRows - 1 - hRow) * hundredSquareSpacing + (9 - cubeRow) * (CUBE_SIZE + CUBE_GAP),
+    });
+  }
+
+  // Add remainder (tens + units) to the right of the hundreds
+  if (tensAndUnits > 0) {
+    const remainderOffsetX = hundredCols * hundredSquareSpacing + CUBE_GAP * 2;
+    // Align remainder to bottom of the hundreds area
+    const remainderPositions = getSubBlockPositions(tensAndUnits, remainderOffsetX, 0);
+    positions.push(...remainderPositions);
   }
 
   return positions;
@@ -84,21 +136,21 @@ function getCubePositions(value: number): Position[] {
 // Single cube component
 function Cube({
   color,
-  hasRedOutline,
+  outlineColor,
   hasFace,
   eyeCount = 2,
   starEyes,
   style,
 }: {
   color: string;
-  hasRedOutline?: boolean;
+  outlineColor?: string | null;
   hasFace?: boolean;
   eyeCount?: number;
   starEyes?: 'red' | 'blue' | false;
   style?: React.CSSProperties;
 }) {
-  const renderStarEye = (color: 'red' | 'blue') => (
-    <div className={`cube-eye-star star-${color}`}>
+  const renderStarEye = (starColor: 'red' | 'blue') => (
+    <div className={`cube-eye-star star-${starColor}`}>
       <div className="eye-inner" />
     </div>
   );
@@ -111,7 +163,7 @@ function Cube({
       style={{
         ...style,
         backgroundColor: color,
-        border: hasRedOutline ? '3px solid #FF0000' : undefined,
+        border: outlineColor ? `3px solid ${outlineColor}` : undefined,
         boxSizing: 'border-box',
       }}
     >
@@ -143,51 +195,224 @@ const NINE_GRAY_COLORS = [
   '#606060',
 ];
 
+// Pale versions of each Numberblock color (for tens portions)
+const PALE_COLORS: Record<number, string> = {
+  1: '#FFFFFF',  // White (special case for 10s)
+  2: '#FFD4A8',  // Pale orange
+  3: '#FFF4B8',  // Pale yellow
+  4: '#B8F0B8',  // Pale green
+  5: '#B8E8FF',  // Pale cyan
+  6: '#C4A8D0',  // Pale indigo
+  7: '#D8B8FF',  // Pale violet
+  8: '#FFB8FF',  // Pale magenta
+  9: '#C8C8C8',  // Pale gray
+};
+
+// Helper: get color for a digit, handling special cases (7=rainbow, 9=gray gradient)
+function getDigitColor(digit: number, indexWithinDigit: number, isPale: boolean): string {
+  if (digit === 7) {
+    // Rainbow: each position gets a different color
+    const color = indexWithinDigit + 1;
+    return isPale ? (PALE_COLORS[color] || '#FFFFFF') : getNumberBlockColor(color);
+  }
+  if (digit === 9 && !isPale) {
+    // Gray gradient only for primary (not pale)
+    return NINE_GRAY_COLORS[indexWithinDigit] || '#808080';
+  }
+  return isPale ? (PALE_COLORS[digit] || '#FFFFFF') : getNumberBlockColor(digit);
+}
+
 // Get the color for a specific cube within a block
-function getCubeColor(blockValue: number, cubeIndex: number, totalCubes: number): string {
-  // Special case: 7 is a rainbow (each cube is a different color)
-  if (blockValue === 7) {
-    // cubeIndex 0 is bottom, so we need to map to 1-7 from bottom to top
-    // In getCubePositions, index 0 has highest y (bottom), last index has lowest y (top)
-    // So cubeIndex 0 = bottom = color 1, cubeIndex 6 = top = color 7
-    return getNumberBlockColor(cubeIndex + 1);
-  }
-
-  // Special case: 9 is a gray gradient (light at bottom, dark at top)
-  if (blockValue === 9) {
-    return NINE_GRAY_COLORS[cubeIndex] || '#808080';
-  }
-
+// Order of magnitude alternation: units=primary, tens=pale, hundreds=primary, thousands=pale, etc.
+function getCubeColor(blockValue: number, cubeIndex: number, _totalCubes: number): string {
+  // Base cases (1-10)
   if (blockValue <= 10) {
-    // Simple case: all cubes same color
+    if (blockValue === 7) {
+      return getNumberBlockColor(cubeIndex + 1);
+    }
+    if (blockValue === 9) {
+      return NINE_GRAY_COLORS[cubeIndex] || '#808080';
+    }
     return getNumberBlockColor(blockValue);
   }
 
-  // For values > 10: first N*10 cubes are white (the "tens"), rest are remainder color
-  const tensCount = Math.floor(blockValue / 10) * 10;
-  const remainder = blockValue % 10;
+  // For values 11-99: tens=pale, units=primary
+  if (blockValue < 100) {
+    const tensDigit = Math.floor(blockValue / 10);
+    const tensCount = tensDigit * 10;
+    const units = blockValue % 10;
 
-  if (cubeIndex < tensCount) {
-    return '#FFFFFF'; // White for the tens portion
-  } else {
-    const remainderIndex = cubeIndex - tensCount;
-    // If remainder is 7, the extra cubes should be rainbow
-    if (remainder === 7) {
-      return getNumberBlockColor(remainderIndex + 1);
+    if (cubeIndex < tensCount) {
+      // TENS PORTION: pale
+      if (tensDigit === 7) {
+        const column = Math.floor(cubeIndex / 10);
+        return PALE_COLORS[column + 1] || '#FFFFFF';
+      }
+      return PALE_COLORS[tensDigit] || '#FFFFFF';
+    } else {
+      // UNITS PORTION: primary
+      const unitsIndex = cubeIndex - tensCount;
+      return getDigitColor(units, unitsIndex, false);
     }
-    // If remainder is 9, use gray gradient for the extra cubes
-    if (remainder === 9) {
-      return NINE_GRAY_COLORS[remainderIndex] || '#808080';
-    }
-    // If remainder is 0, it's a multiple of 10 - all white (handled above)
-    return remainder === 0 ? '#FFFFFF' : getNumberBlockColor(remainder);
   }
+
+  // For values 100-999: hundreds=primary, tens=pale, units=primary
+  if (blockValue < 1000) {
+    const hundredsDigit = Math.floor(blockValue / 100);
+    const hundredsCount = hundredsDigit * 100;
+    const tensDigit = Math.floor((blockValue % 100) / 10);
+    const tensCount = tensDigit * 10;
+    const units = blockValue % 10;
+
+    if (cubeIndex < hundredsCount) {
+      // HUNDREDS PORTION: primary
+      if (hundredsDigit === 7) {
+        // Rainbow hundreds: each column of 100 gets a different color
+        const column = Math.floor(cubeIndex / 100);
+        return getNumberBlockColor(column + 1);
+      }
+      return getNumberBlockColor(hundredsDigit);
+    } else if (cubeIndex < hundredsCount + tensCount) {
+      // TENS PORTION: pale
+      const tensIndex = cubeIndex - hundredsCount;
+      if (tensDigit === 7) {
+        const column = Math.floor(tensIndex / 10);
+        return PALE_COLORS[column + 1] || '#FFFFFF';
+      }
+      return PALE_COLORS[tensDigit] || '#FFFFFF';
+    } else {
+      // UNITS PORTION: primary
+      const unitsIndex = cubeIndex - hundredsCount - tensCount;
+      return getDigitColor(units, unitsIndex, false);
+    }
+  }
+
+  // For values 1000+: thousands=pale, hundreds=primary, tens=pale, units=primary
+  const thousandsDigit = Math.floor(blockValue / 1000);
+  const thousandsCount = thousandsDigit * 1000;
+  const hundredsDigit = Math.floor((blockValue % 1000) / 100);
+  const hundredsCount = hundredsDigit * 100;
+  const tensDigit = Math.floor((blockValue % 100) / 10);
+  const tensCount = tensDigit * 10;
+  const units = blockValue % 10;
+
+  if (cubeIndex < thousandsCount) {
+    // THOUSANDS PORTION: pale
+    if (thousandsDigit === 7) {
+      const column = Math.floor(cubeIndex / 1000);
+      return PALE_COLORS[column + 1] || '#FFFFFF';
+    }
+    return PALE_COLORS[thousandsDigit] || '#FFFFFF';
+  } else if (cubeIndex < thousandsCount + hundredsCount) {
+    // HUNDREDS PORTION: primary
+    if (hundredsDigit === 7) {
+      const column = Math.floor((cubeIndex - thousandsCount) / 100);
+      return getNumberBlockColor(column + 1);
+    }
+    return getNumberBlockColor(hundredsDigit);
+  } else if (cubeIndex < thousandsCount + hundredsCount + tensCount) {
+    // TENS PORTION: pale
+    const tensIndex = cubeIndex - thousandsCount - hundredsCount;
+    if (tensDigit === 7) {
+      const column = Math.floor(tensIndex / 10);
+      return PALE_COLORS[column + 1] || '#FFFFFF';
+    }
+    return PALE_COLORS[tensDigit] || '#FFFFFF';
+  } else {
+    // UNITS PORTION: primary
+    const unitsIndex = cubeIndex - thousandsCount - hundredsCount - tensCount;
+    return getDigitColor(units, unitsIndex, false);
+  }
+}
+
+// Get the outline color for a specific cube (null = no outline)
+// Outlines match the digit color (primary version) for tens and hundreds portions
+function getCubeOutlineColor(blockValue: number, cubeIndex: number): string | null {
+  if (blockValue < 10) {
+    return null; // No outline for 1-9
+  }
+
+  // For 10-99: tens portion gets outline
+  if (blockValue < 100) {
+    const tensDigit = Math.floor(blockValue / 10);
+    const tensCount = tensDigit * 10;
+
+    if (cubeIndex < tensCount || blockValue === tensCount) {
+      if (tensDigit === 7) {
+        const column = Math.floor(cubeIndex / 10);
+        return getNumberBlockColor(column + 1);
+      }
+      return getNumberBlockColor(tensDigit);
+    }
+    return null;
+  }
+
+  // For 100-999: hundreds and tens portions get outlines
+  if (blockValue < 1000) {
+    const hundredsDigit = Math.floor(blockValue / 100);
+    const hundredsCount = hundredsDigit * 100;
+    const tensDigit = Math.floor((blockValue % 100) / 10);
+    const tensCount = tensDigit * 10;
+
+    if (cubeIndex < hundredsCount) {
+      // HUNDREDS PORTION: outline of hundreds digit color
+      if (hundredsDigit === 7) {
+        const column = Math.floor(cubeIndex / 100);
+        return getNumberBlockColor(column + 1);
+      }
+      return getNumberBlockColor(hundredsDigit);
+    } else if (cubeIndex < hundredsCount + tensCount) {
+      // TENS PORTION: outline of tens digit color
+      if (tensDigit === 7) {
+        const column = Math.floor((cubeIndex - hundredsCount) / 10);
+        return getNumberBlockColor(column + 1);
+      }
+      return getNumberBlockColor(tensDigit);
+    }
+    return null; // Units have no outline
+  }
+
+  // For 1000+: thousands, hundreds, and tens portions get outlines
+  const thousandsDigit = Math.floor(blockValue / 1000);
+  const thousandsCount = thousandsDigit * 1000;
+  const hundredsDigit = Math.floor((blockValue % 1000) / 100);
+  const hundredsCount = hundredsDigit * 100;
+  const tensDigit = Math.floor((blockValue % 100) / 10);
+  const tensCount = tensDigit * 10;
+
+  if (cubeIndex < thousandsCount) {
+    // THOUSANDS PORTION: outline
+    if (thousandsDigit === 7) {
+      const column = Math.floor(cubeIndex / 1000);
+      return getNumberBlockColor(column + 1);
+    }
+    return getNumberBlockColor(thousandsDigit);
+  } else if (cubeIndex < thousandsCount + hundredsCount) {
+    // HUNDREDS PORTION: outline
+    if (hundredsDigit === 7) {
+      const column = Math.floor((cubeIndex - thousandsCount) / 100);
+      return getNumberBlockColor(column + 1);
+    }
+    return getNumberBlockColor(hundredsDigit);
+  } else if (cubeIndex < thousandsCount + hundredsCount + tensCount) {
+    // TENS PORTION: outline
+    const tensIndex = cubeIndex - thousandsCount - hundredsCount;
+    if (tensDigit === 7) {
+      const column = Math.floor(tensIndex / 10);
+      return getNumberBlockColor(column + 1);
+    }
+    return getNumberBlockColor(tensDigit);
+  }
+
+  return null; // Units have no outline
 }
 
 export function NumberBlock({
   id,
   value,
   position,
+  createdAt,
+  dragConstraints,
   onDragStart,
   onDrag,
   onDragEnd,
@@ -198,6 +423,20 @@ export function NumberBlock({
 
   // Track the position at drag start
   const dragStartPos = useRef<Position>(position);
+
+  // Cooldown state - block ignores input briefly after creation
+  const [isInCooldown, setIsInCooldown] = useState(() => Date.now() - createdAt < BLOCK_COOLDOWN_MS);
+
+  useEffect(() => {
+    if (!isInCooldown) return;
+    const remaining = BLOCK_COOLDOWN_MS - (Date.now() - createdAt);
+    if (remaining <= 0) {
+      setIsInCooldown(false);
+      return;
+    }
+    const timer = setTimeout(() => setIsInCooldown(false), remaining);
+    return () => clearTimeout(timer);
+  }, [createdAt, isInCooldown]);
 
   // Top-left cube gets the face (smallest y, then smallest x)
   // This ensures the face is on the top-left remainder cube for values > 10
@@ -217,8 +456,8 @@ export function NumberBlock({
   // Number of eyes based on value (only 1 has 1 eye, others have 2)
   const eyeCount = value === 1 ? 1 : 2;
 
-  // Star eyes for 5 (blue) and 10 (red)
-  const starEyes = value === 5 ? 'blue' : value === 10 ? 'red' : false;
+  // Star eyes for 5, 50 (blue) and 10, 100 (red)
+  const starEyes = (value === 5 || value === 50) ? 'blue' : (value === 10 || value === 100) ? 'red' : false;
 
   const handleDragStart = () => {
     dragStartPos.current = position;
@@ -257,18 +496,20 @@ export function NumberBlock({
 
   return (
     <motion.div
-      className="absolute touch-target no-select drag-none cursor-grab active:cursor-grabbing"
+      className={`absolute touch-target no-select drag-none cursor-grab active:cursor-grabbing ${isInCooldown ? 'pointer-events-none' : 'pointer-events-auto'}`}
       onContextMenu={handleContextMenu}
       style={{
         width: dimensions.width,
         height: dimensions.height,
         x: position.x,
         y: position.y,
-        filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.2))',
+        // Using boxShadow instead of filter to avoid Framer Motion NaN animation bug
+        boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
       }}
       drag
       dragMomentum={false}
       dragElastic={0}
+      dragConstraints={dragConstraints}
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
@@ -279,7 +520,7 @@ export function NumberBlock({
       whileDrag={{
         scale: 1.1,
         zIndex: 1000,
-        filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.3))',
+        boxShadow: '0 8px 16px rgba(0,0,0,0.3)',
       }}
       transition={{
         type: 'spring',
@@ -288,14 +529,11 @@ export function NumberBlock({
       }}
     >
       {cubePositions.map((pos, index) => {
-        // Red outline for: 10, multiples of 10, or the tens portion of larger numbers
-        const tensCount = value >= 10 ? Math.floor(value / 10) * 10 : 0;
-        const hasRedOutline = value >= 10 && (value % 10 === 0 || index < tensCount);
         return (
           <Cube
             key={index}
             color={getCubeColor(value, index, cubePositions.length)}
-            hasRedOutline={hasRedOutline}
+            outlineColor={getCubeOutlineColor(value, index)}
             hasFace={index === topCubeIndex}
             eyeCount={eyeCount}
             starEyes={starEyes}
@@ -309,8 +547,10 @@ export function NumberBlock({
 
       {/* Value label */}
       <div
-        className="block-label absolute -top-7 left-1/2 -translate-x-1/2 text-lg font-bold text-gray-700 pointer-events-none"
-        style={{ textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}
+        className="block-label absolute -top-10 left-1/2 -translate-x-1/2 text-4xl font-bold text-black pointer-events-none"
+        style={{
+          textShadow: '0 0 8px rgba(255,255,255,0.9), 0 0 16px rgba(255,255,255,0.7), 0 0 24px rgba(255,255,255,0.5)',
+        }}
       >
         {value}
       </div>

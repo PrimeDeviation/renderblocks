@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Windows download metadata
+*:Zone.Identifier
+
+# Keystores and signing
+*.keystore
+*.jks
+keystore.properties
+
+# Local environment
+.env
+.env.local

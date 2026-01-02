@@ -5,6 +5,7 @@ import {
   type BoundingBox,
   getBlockDimensions,
 } from '../types';
+import { playAdditionSound, playSubtractionSound } from '../utils';
 
 interface PendingCombination {
   draggingId: string;
@@ -37,7 +38,7 @@ export function useNumberBlocks() {
 
   const addBlock = useCallback((value: number, position: Position): string => {
     const id = generateId();
-    setBlocks(prev => [...prev, { id, value, position, isDragging: false }]);
+    setBlocks(prev => [...prev, { id, value, position, isDragging: false, createdAt: Date.now() }]);
     return id;
   }, []);
 
@@ -127,11 +128,22 @@ export function useNumberBlocks() {
     const centerX = (draggedBox.x + draggedBox.width / 2 + collidingBox.x + collidingBox.width / 2) / 2;
     const centerY = (draggedBox.y + draggedBox.height / 2 + collidingBox.y + collidingBox.height / 2) / 2;
 
+    // Calculate position and clamp to screen bounds
+    const margin = 10;
+    const maxX = window.innerWidth - newDims.width - margin;
+    const maxY = window.innerHeight - newDims.height - margin;
+
+    let x = centerX - newDims.width / 2;
+    let y = centerY - newDims.height / 2;
+    x = Math.max(margin, Math.min(x, maxX));
+    y = Math.max(margin, Math.min(y, maxY));
+
     const newBlock: NumberBlock = {
       id: generateId(),
       value: newValue,
-      position: { x: centerX - newDims.width / 2, y: centerY - newDims.height / 2 },
+      position: { x, y },
       isDragging: false,
+      createdAt: Date.now(),
     };
 
     // Update state: remove both, add new
@@ -139,6 +151,9 @@ export function useNumberBlocks() {
       ...prev.filter(b => b.id !== draggedId && b.id !== collidingBlock!.id),
       newBlock,
     ]);
+
+    // Play addition sound
+    playAdditionSound();
 
     setPendingCombination(null);
     return true;
@@ -150,7 +165,8 @@ export function useNumberBlocks() {
   }, []);
 
   // Split a block into two: (original - subtractValue) and (subtractValue)
-  const splitBlock = useCallback((id: string, subtractValue: number): boolean => {
+  // Set skipSound=true when using custom sound (e.g., sneeze)
+  const splitBlock = useCallback((id: string, subtractValue: number, skipSound = false): boolean => {
     const currentBlocks = blocksRef.current;
     const block = currentBlocks.find(b => b.id === id);
 
@@ -159,27 +175,42 @@ export function useNumberBlocks() {
     }
 
     const remainingValue = block.value - subtractValue;
-    const dims = getBlockDimensions(block.value);
+    const dims1 = getBlockDimensions(remainingValue);
+    const dims2 = getBlockDimensions(subtractValue);
 
-    // Create two new blocks side by side
+    // Helper to clamp position to screen bounds
+    const margin = 10;
+    const clamp = (pos: Position, dims: { width: number; height: number }): Position => {
+      const maxX = window.innerWidth - dims.width - margin;
+      const maxY = window.innerHeight - dims.height - margin;
+      return {
+        x: Math.max(margin, Math.min(pos.x, maxX)),
+        y: Math.max(margin, Math.min(pos.y, maxY)),
+      };
+    };
+
+    // Create two new blocks side by side, clamped to screen
+    const now = Date.now();
     const newBlock1: NumberBlock = {
       id: generateId(),
       value: remainingValue,
-      position: {
+      position: clamp({
         x: block.position.x - 30,
         y: block.position.y
-      },
+      }, dims1),
       isDragging: false,
+      createdAt: now,
     };
 
     const newBlock2: NumberBlock = {
       id: generateId(),
       value: subtractValue,
-      position: {
-        x: block.position.x + dims.width + 10,
+      position: clamp({
+        x: block.position.x + dims1.width + 10,
         y: block.position.y
-      },
+      }, dims2),
       isDragging: false,
+      createdAt: now,
     };
 
     setBlocks(prev => [
@@ -187,6 +218,11 @@ export function useNumberBlocks() {
       newBlock1,
       newBlock2,
     ]);
+
+    // Play subtraction sound (unless skipped for custom sound like sneeze)
+    if (!skipSound) {
+      playSubtractionSound();
+    }
 
     return true;
   }, []);

@@ -53,6 +53,7 @@ export interface NumberBlock {
   value: number;
   position: Position;
   isDragging: boolean;
+  createdAt: number; // timestamp for cooldown on new blocks
 }
 
 // Letter block (for future use)
@@ -73,8 +74,10 @@ export const CUBE_SIZE = 48; // pixels, matches touch target minimum
 export const CUBE_GAP = 2;   // small gap between stacked cubes
 export const FACE_SIZE = 32; // size of the face on top cube
 
-// Calculate block dimensions based on value
-export function getBlockDimensions(value: number): Size {
+// Helper: get dimensions for a sub-block (values < 100)
+function getSubBlockDimensions(value: number): Size {
+  if (value === 0) return { width: 0, height: 0 };
+
   // 4 is a 2x2 square
   if (value === 4) {
     return {
@@ -108,8 +111,7 @@ export function getBlockDimensions(value: number): Size {
   }
 
   // 6-29: 2 columns wide
-  // 30-39: 3 columns, 40-49: 4 columns, etc.
-  // Column count matches tens digit for 30+
+  // 30-99: column count matches tens digit
   let cols = 2;
   if (value >= 30) {
     cols = Math.floor(value / 10);
@@ -119,6 +121,48 @@ export function getBlockDimensions(value: number): Size {
     width: cols * CUBE_SIZE + (cols - 1) * CUBE_GAP,
     height: rows * CUBE_SIZE + (rows - 1) * CUBE_GAP,
   };
+}
+
+// Calculate block dimensions based on value
+export function getBlockDimensions(value: number): Size {
+  // For values < 100, use simple layout
+  if (value < 100) {
+    return getSubBlockDimensions(value);
+  }
+
+  // For values 100-999: hundreds as 10×10 squares + remainder
+  const hundreds = Math.floor(value / 100);
+  const tensAndUnits = value % 100;
+
+  // Size of a 10×10 hundred-square
+  const hundredSquareSize = 10 * CUBE_SIZE + 9 * CUBE_GAP;
+  const hundredSquareSpacing = hundredSquareSize + CUBE_GAP * 2;
+
+  // Arrange hundred-squares
+  let hundredCols = 1;
+  if (hundreds >= 4) hundredCols = 2;
+  if (hundreds >= 7) hundredCols = 3;
+  const hundredRows = Math.ceil(hundreds / hundredCols);
+
+  // Hundreds area dimensions
+  const hundredsWidth = hundredCols * hundredSquareSpacing - CUBE_GAP * 2;
+  const hundredsHeight = hundredRows * hundredSquareSpacing - CUBE_GAP * 2;
+
+  // Remainder dimensions
+  const remainderDims = getSubBlockDimensions(tensAndUnits);
+
+  // Total dimensions
+  let totalWidth = hundredsWidth;
+  let totalHeight = hundredsHeight;
+
+  if (tensAndUnits > 0) {
+    // Remainder is to the right
+    totalWidth = hundredsWidth + CUBE_GAP * 4 + remainderDims.width;
+    // Height is max of hundreds and remainder
+    totalHeight = Math.max(hundredsHeight, remainderDims.height);
+  }
+
+  return { width: totalWidth, height: totalHeight };
 }
 
 // Get bounding box for a number block

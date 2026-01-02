@@ -1,16 +1,47 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { NumberBlock } from './components/blocks';
-import { Mirror, VoiceButton, TranscriptDisplay, SubtractMenu } from './components/ui';
+import { Mirror, VoiceButton, TranscriptDisplay, SubtractMenu, SneezeMenu, TrashCan, calculateSneeze1Split, calculateSneeze2Split, type SneezeType } from './components/ui';
 import { AppShell } from './components/layout';
 import { useNumberBlocks, useVoiceInput, useDarkMode } from './hooks';
-import type { Position } from './types';
+import { getBlockDimensions, type Position, type NumberBlock as NumberBlockType } from './types';
+import { throttle, playSneezeSound, playAdditionSound, playGulpSound } from './utils';
+
+// Minimum screen width to show sneeze menu (tablet and larger)
+const SNEEZE_MIN_WIDTH = 768;
 
 // State for the subtract menu
 interface SubtractMenuState {
   blockId: string;
   blockValue: number;
   position: { x: number; y: number };
+}
+
+// Zero block (just a "0" number, no visual block)
+interface ZeroBlock {
+  id: string;
+  position: { x: number; y: number };
+}
+
+// Check if a point is inside a block's bounding box
+function isPointInBlock(point: Position, block: NumberBlockType): boolean {
+  const dims = getBlockDimensions(block.value);
+  return (
+    point.x >= block.position.x &&
+    point.x <= block.position.x + dims.width &&
+    point.y >= block.position.y &&
+    point.y <= block.position.y + dims.height
+  );
+}
+
+// Find block at a given point
+function findBlockAtPoint(point: Position, blocks: NumberBlockType[]): NumberBlockType | null {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isPointInBlock(point, blocks[i])) {
+      return blocks[i];
+    }
+  }
+  return null;
 }
 
 // Addition sign component that appears when blocks overlap
@@ -34,10 +65,12 @@ function AdditionSign({ x, y }: { x: number; y: number }) {
 }
 
 function App() {
+
   const {
     blocks,
     pendingCombination,
     addBlock,
+    removeBlock,
     updateBlockPosition,
     startDragging,
     stopDragging,
@@ -52,12 +85,193 @@ function App() {
   // Subtract menu state
   const [subtractMenu, setSubtractMenu] = useState<SubtractMenuState | null>(null);
 
-  // Handle spawning from mirror
+  // Ref for the playground area to constrain block dragging
+  const playgroundRef = useRef<HTMLDivElement>(null);
+
+  // Ref for trash can to detect drops
+  const trashCanRef = useRef<HTMLDivElement>(null);
+
+  // Track last pointer position for trash detection
+  const lastPointerPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Zoom state for the playground (default 1.0 for testing)
+  const [zoom, setZoom] = useState(1.0);
+
+  // Calculate drag constraints - must account for scale transform
+  // Block positions are in scaled coords, screen edge in scaled coords = screen / zoom
+  const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
+
+  useEffect(() => {
+    let resizeTimeout: ReturnType<typeof setTimeout>;
+    const updateSize = () => {
+      // Debounce resize events to prevent excessive re-renders
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      }, 100);
+    };
+    // Set initial size immediately
+    setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', updateSize);
+    return () => {
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', updateSize);
+    };
+  }, []);
+
+  // Auto-zoom disabled for debugging
+  // TODO: Re-enable after fixing render loop
+  /*
+  const zoomRef = useRef(zoom);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    if (blocks.length === 0) return;
+    let maxWidth = 0;
+    let maxHeight = 0;
+    for (const block of blocks) {
+      const dims = getBlockDimensions(block.value);
+      maxWidth = Math.max(maxWidth, dims.width);
+      maxHeight = Math.max(maxHeight, dims.height);
+    }
+    const margin = 40;
+    const requiredWidth = maxWidth + margin;
+    const requiredHeight = maxHeight + margin;
+    const zoomForWidth = windowSize.width / requiredWidth;
+    const zoomForHeight = windowSize.height / requiredHeight;
+    const minZoomNeeded = Math.min(zoomForWidth, zoomForHeight);
+    const currentZoom = zoomRef.current;
+    if (minZoomNeeded < 1.0 && minZoomNeeded < currentZoom - 0.01) {
+      const newZoom = Math.max(0.3, minZoomNeeded);
+      setZoom(newZoom);
+    }
+  }, [blocks, windowSize]);
+  */
+
+  // Calculate drag constraints for a specific block value
+  // All edges constrained so no part of the block can leave the screen
+  const getDragConstraints = useCallback((blockValue: number) => {
+    const dims = getBlockDimensions(blockValue);
+    // Ensure constraints are never negative (block larger than screen)
+    const right = Math.max(0, windowSize.width / zoom - dims.width);
+    const bottom = Math.max(0, windowSize.height / zoom - dims.height);
+    return {
+      left: 0,
+      top: 0,
+      right,
+      bottom,
+    };
+  }, [windowSize, zoom]);
+
+
+  // Track pointer position for trash can detection
+  useEffect(() => {
+    const trackPointer = (e: PointerEvent) => {
+      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+    };
+    document.addEventListener('pointermove', trackPointer);
+    return () => document.removeEventListener('pointermove', trackPointer);
+  }, []);
+
+  // Prevent all unwanted touch gestures (pinch zoom, screen drag)
+  useEffect(() => {
+    const preventGestures = (e: TouchEvent) => {
+      // Allow single touch (for block dragging), block multi-touch
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    const preventGestureEvent = (e: Event) => {
+      e.preventDefault();
+    };
+
+    // Prevent pinch zoom and multi-touch gestures
+    document.addEventListener('touchmove', preventGestures, { passive: false });
+    document.addEventListener('gesturestart', preventGestureEvent);
+    document.addEventListener('gesturechange', preventGestureEvent);
+    document.addEventListener('gestureend', preventGestureEvent);
+
+    return () => {
+      document.removeEventListener('touchmove', preventGestures);
+      document.removeEventListener('gesturestart', preventGestureEvent);
+      document.removeEventListener('gesturechange', preventGestureEvent);
+      document.removeEventListener('gestureend', preventGestureEvent);
+    };
+  }, []);
+
+  // Handle mouse wheel zoom (scroll wheel zooms the playground)
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom((z) => Math.min(1.5, Math.max(0.5, z + delta)));
+  }, []);
+
+  // Zoom controls
+  const zoomIn = useCallback(() => {
+    setZoom((z) => Math.min(1.5, z + 0.1));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((z) => Math.max(0.5, z - 0.1));
+  }, []);
+
+  // Handle spawning from mirror - check for immediate combine
   const handleSpawn = useCallback(
     (value: number, position: Position) => {
+      const spawnDims = getBlockDimensions(value);
+      const spawnBox = {
+        x: position.x,
+        y: position.y,
+        width: spawnDims.width,
+        height: spawnDims.height,
+      };
+
+      // Check if spawn position overlaps with any existing block
+      for (const block of blocks) {
+        const blockDims = getBlockDimensions(block.value);
+        const blockBox = {
+          x: block.position.x,
+          y: block.position.y,
+          width: blockDims.width,
+          height: blockDims.height,
+        };
+
+        const overlaps =
+          spawnBox.x < blockBox.x + blockBox.width &&
+          spawnBox.x + spawnBox.width > blockBox.x &&
+          spawnBox.y < blockBox.y + blockBox.height &&
+          spawnBox.y + spawnBox.height > blockBox.y;
+
+        if (overlaps) {
+          // Combine: remove old block, add combined block
+          const newValue = value + block.value;
+          const newDims = getBlockDimensions(newValue);
+
+          // Center between the two
+          const centerX = (spawnBox.x + spawnBox.width / 2 + blockBox.x + blockBox.width / 2) / 2;
+          const centerY = (spawnBox.y + spawnBox.height / 2 + blockBox.y + blockBox.height / 2) / 2;
+
+          const margin = 10;
+          const maxX = window.innerWidth - newDims.width - margin;
+          const maxY = window.innerHeight - newDims.height - margin;
+
+          const newX = Math.max(margin, Math.min(centerX - newDims.width / 2, maxX));
+          const newY = Math.max(margin, Math.min(centerY - newDims.height / 2, maxY));
+
+          removeBlock(block.id);
+          addBlock(newValue, { x: newX, y: newY });
+          playAdditionSound();
+          return;
+        }
+      }
+
+      // No overlap - just spawn normally
       addBlock(value, position);
     },
-    [addBlock]
+    [addBlock, removeBlock, blocks]
   );
 
   // Handle block drag events
@@ -68,21 +282,44 @@ function App() {
     [startDragging]
   );
 
+  // Throttle overlap checks to 50ms to prevent re-render storms on rapid drags
+  const throttledCheckOverlap = useMemo(
+    () => throttle((id: string, position: Position) => checkOverlap(id, position), 50),
+    [checkOverlap]
+  );
+
   const handleDrag = useCallback(
     (id: string, position: Position) => {
       updateBlockPosition(id, position);
-      checkOverlap(id, position); // Check for overlaps during drag
+      throttledCheckOverlap(id, position); // Throttled overlap check
     },
-    [updateBlockPosition, checkOverlap]
+    [updateBlockPosition, throttledCheckOverlap]
   );
 
   const handleDragEnd = useCallback(
     (id: string, position: Position) => {
+      // Check if dropped on trash can
+      if (trashCanRef.current) {
+        const rect = trashCanRef.current.getBoundingClientRect();
+        const pos = lastPointerPos.current;
+        const isOverTrash =
+          pos.x >= rect.left &&
+          pos.x <= rect.right &&
+          pos.y >= rect.top &&
+          pos.y <= rect.bottom;
+
+        if (isOverTrash) {
+          playGulpSound();
+          removeBlock(id);
+          return;
+        }
+      }
+
       updateBlockPosition(id, position);
       finalizeCombine(id, position); // Try to combine if overlapping
       stopDragging(id);
     },
-    [updateBlockPosition, finalizeCombine, stopDragging]
+    [updateBlockPosition, finalizeCombine, stopDragging, removeBlock]
   );
 
   // Handle right-click to show subtract menu
@@ -109,10 +346,80 @@ function App() {
     setSubtractMenu(null);
   }, []);
 
+  // Zero blocks state (for sneeze 2 on 1) - persistent zeros that don't fade
+  const [zeroBlocks, setZeroBlocks] = useState<ZeroBlock[]>([]);
+
+  // Handle sneeze (drag wind gust onto block)
+  const handleSneeze = useCallback(
+    (blockId: string, sneezeType: SneezeType) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block || block.value < 1) return;
+
+      let first: number;
+      let second: number;
+
+      if (sneezeType === 'sneeze1') {
+        [first, second] = calculateSneeze1Split(block.value);
+      } else {
+        [first, second] = calculateSneeze2Split(block.value);
+      }
+
+      // Sneeze sound delay - split happens in middle of sound effect (~500ms)
+      const SNEEZE_SPLIT_DELAY = 500;
+
+      // Special case: sneeze 1 on 1 → duplicate
+      if (block.value === 1 && sneezeType === 'sneeze1') {
+        playSneezeSound();
+        // Delay the duplicate to sync with sound
+        setTimeout(() => {
+          const dims = getBlockDimensions(1);
+          addBlock(1, {
+            x: Math.min(block.position.x + dims.width + 20, window.innerWidth - dims.width - 10),
+            y: block.position.y,
+          });
+        }, SNEEZE_SPLIT_DELAY);
+        return;
+      }
+
+      // Special case: sneeze 2 on 1 → remove the 1 block and show persistent zero
+      if (block.value === 1 && sneezeType === 'sneeze2') {
+        playSneezeSound();
+        // Delay to sync with sound, then remove block and add zero
+        setTimeout(() => {
+          const dims = getBlockDimensions(1);
+          // Remove the 1 block
+          removeBlock(blockId);
+          // Add a persistent zero at its position
+          setZeroBlocks(prev => [...prev, {
+            id: crypto.randomUUID(),
+            position: {
+              x: block.position.x + dims.width / 2 - 20, // Center the 0 roughly
+              y: block.position.y + dims.height / 2 - 30,
+            },
+          }]);
+        }, SNEEZE_SPLIT_DELAY);
+        return;
+      }
+
+      // Normal split: both values must be positive
+      if (first > 0 && second > 0 && first + second === block.value) {
+        playSneezeSound();
+        // Delay split to sync with sound, skip normal split sound
+        setTimeout(() => {
+          splitBlock(blockId, second, true);
+        }, SNEEZE_SPLIT_DELAY);
+      }
+    },
+    [blocks, splitBlock, addBlock, removeBlock]
+  );
+
+  // Check if screen is large enough for sneeze menu
+  const showSneezeMenu = windowSize.width >= SNEEZE_MIN_WIDTH;
+
   return (
     <AppShell
       header={
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pointer-events-none">
           {/* Logo */}
           <div className="flex items-center gap-3">
             <motion.div
@@ -136,8 +443,38 @@ function App() {
             </span>
           </div>
 
-          {/* Block count and dark mode toggle */}
-          <div className="flex items-center gap-4">
+          {/* Zoom controls, block count, and dark mode toggle */}
+          <div className="flex items-center gap-4 pointer-events-auto">
+            {/* Zoom controls */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={zoomOut}
+                className={`w-10 h-10 rounded-full text-2xl font-bold transition-colors ${
+                  isDark
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                } ${zoom <= 0.5 ? 'opacity-50' : ''}`}
+                disabled={zoom <= 0.5}
+                aria-label="Zoom out"
+              >
+                −
+              </button>
+              <span className={`text-sm w-12 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={zoomIn}
+                className={`w-10 h-10 rounded-full text-2xl font-bold transition-colors ${
+                  isDark
+                    ? 'bg-gray-700 text-white hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                } ${zoom >= 1.5 ? 'opacity-50' : ''}`}
+                disabled={zoom >= 1.5}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+            </div>
             <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               {blocks.length} block{blocks.length !== 1 ? 's' : ''}
             </div>
@@ -164,12 +501,12 @@ function App() {
         </div>
       }
       footer={
-        <div className="flex items-center justify-between gap-4">
-          {/* Mirror for spawning blocks 1-10 */}
+        <div className="flex items-center justify-between gap-4 pointer-events-none">
+          {/* Mirror for spawning blocks 1-10 (left side) */}
           <Mirror onSpawn={handleSpawn} />
 
-          {/* Voice button */}
-          <div className="flex flex-col items-center gap-2">
+          {/* Voice button (center) */}
+          <div className="flex flex-col items-center gap-2 pointer-events-auto">
             <VoiceButton
               isListening={voice.isListening}
               isSupported={voice.isSupported}
@@ -177,37 +514,72 @@ function App() {
               onRelease={voice.stopListening}
             />
           </div>
+
+          {/* Trash can and Sneeze menu (right side, large screens only) */}
+          {showSneezeMenu ? (
+            <div className="flex items-end gap-2">
+              <TrashCan ref={trashCanRef} />
+              <SneezeMenu blocks={blocks} onSneeze={handleSneeze} />
+            </div>
+          ) : (
+            <div className="w-32" /> // Spacer to maintain layout on small screens
+          )}
         </div>
       }
     >
       {/* Main playground area */}
-      <div className="relative w-full h-full overflow-hidden">
-        {/* Blocks */}
-        <AnimatePresence>
-          {blocks.map((block) => (
-            <NumberBlock
-              key={block.id}
-              id={block.id}
-              value={block.value}
-              position={block.position}
-              isDragging={block.isDragging}
-              onDragStart={handleDragStart}
-              onDrag={handleDrag}
-              onDragEnd={handleDragEnd}
-              onRightClick={handleRightClick}
-            />
-          ))}
-        </AnimatePresence>
+      <div
+        className="relative w-full h-full overflow-hidden"
+        style={{ touchAction: 'none' }}
+        onWheel={handleWheel}
+      >
+        {/* Constraint boundary - viewport sized for screen-edge constraints */}
+        <div
+          ref={playgroundRef}
+          className="absolute inset-0"
+          style={{
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Scaled container for blocks - pointer-events:none so empty space is inert */}
+        <div
+          className="absolute origin-top-left"
+          style={{
+            transform: `scale(${zoom})`,
+            width: `${100 / zoom}%`,
+            height: `${100 / zoom}%`,
+            pointerEvents: 'none',
+          }}
+        >
+          {/* Blocks */}
+          <AnimatePresence>
+            {blocks.map((block) => (
+              <NumberBlock
+                key={block.id}
+                id={block.id}
+                value={block.value}
+                position={block.position}
+                createdAt={block.createdAt}
+                isDragging={block.isDragging}
+                dragConstraints={getDragConstraints(block.value)}
+                onDragStart={handleDragStart}
+                onDrag={handleDrag}
+                onDragEnd={handleDragEnd}
+                onRightClick={handleRightClick}
+              />
+            ))}
+          </AnimatePresence>
 
-        {/* Addition sign when blocks overlap */}
-        <AnimatePresence>
-          {pendingCombination && (
-            <AdditionSign
-              x={pendingCombination.position.x}
-              y={pendingCombination.position.y}
-            />
-          )}
-        </AnimatePresence>
+          {/* Addition sign when blocks overlap */}
+          <AnimatePresence>
+            {pendingCombination && (
+              <AdditionSign
+                x={pendingCombination.position.x}
+                y={pendingCombination.position.y}
+              />
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* Subtract menu (right-click) */}
         <AnimatePresence>
@@ -219,6 +591,47 @@ function App() {
               onClose={handleCloseSubtractMenu}
             />
           )}
+        </AnimatePresence>
+
+        {/* Zero blocks (sneeze 2 on 1) - persistent, no fading, same size as block numberlings */}
+        <AnimatePresence>
+          {zeroBlocks.map((zero) => (
+            <motion.div
+              key={zero.id}
+              className="absolute pointer-events-auto z-40 text-4xl font-bold text-black cursor-grab active:cursor-grabbing"
+              style={{
+                left: zero.position.x,
+                top: zero.position.y,
+                textShadow: '0 0 8px rgba(255,255,255,0.9), 0 0 16px rgba(255,255,255,0.7), 0 0 24px rgba(255,255,255,0.5)',
+              }}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              drag
+              dragMomentum={false}
+              dragElastic={0}
+              onDragEnd={(_e, info) => {
+                // Check if dropped on a block
+                const targetBlock = findBlockAtPoint(info.point, blocks);
+
+                if (targetBlock) {
+                  // Zero combines with block (0 + n = n) - zero vanishes
+                  setZeroBlocks(prev => prev.filter(z => z.id !== zero.id));
+                  playAdditionSound(); // Feedback that something happened
+                } else {
+                  // Update zero position after drag
+                  setZeroBlocks(prev => prev.map(z =>
+                    z.id === zero.id
+                      ? { ...z, position: { x: info.point.x - 20, y: info.point.y - 30 } }
+                      : z
+                  ));
+                }
+              }}
+            >
+              0
+            </motion.div>
+          ))}
         </AnimatePresence>
 
         {/* Voice transcript */}
