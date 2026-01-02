@@ -1,5 +1,5 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { getNumberBlockColor } from '../../types';
 
 interface SubtractMenuProps {
@@ -11,10 +11,18 @@ interface SubtractMenuProps {
 
 export function SubtractMenu({ blockValue, position, onSelect, onClose }: SubtractMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
 
-  // Close on click outside
+  // Debounced select to prevent double-taps
+  const handleSelect = useCallback((value: number) => {
+    if (isSelecting) return;
+    setIsSelecting(true);
+    onSelect(value);
+  }, [isSelecting, onSelect]);
+
+  // Close on click/touch outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -26,29 +34,36 @@ export function SubtractMenu({ blockValue, position, onSelect, onClose }: Subtra
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    // Delay adding listener to avoid catching the same touch that opened the menu
+    const timerId = setTimeout(() => {
+      document.addEventListener('pointerdown', handleClickOutside);
+    }, 100);
     document.addEventListener('keydown', handleEscape);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      clearTimeout(timerId);
+      document.removeEventListener('pointerdown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [onClose]);
 
-  // Generate options 1 to n-1
-  const options = Array.from({ length: blockValue - 1 }, (_, i) => i + 1);
+  // Generate options 1 to n-1, capped at 20 for performance
+  const maxOptions = Math.min(blockValue - 1, 20);
+  const options = Array.from({ length: maxOptions }, (_, i) => i + 1);
 
   // Calculate grid columns (max 5 per row)
   const cols = Math.min(options.length, 5);
+  const isCapped = blockValue > 21;
 
   return (
     <motion.div
       ref={menuRef}
-      className="subtract-menu fixed z-[2000] bg-white/95 dark:bg-gray-800/95 rounded-xl shadow-2xl p-3 backdrop-blur-sm border-2 border-red-400"
+      className="subtract-menu fixed z-[2000] bg-white/95 dark:bg-gray-800/95 rounded-xl shadow-2xl p-3 backdrop-blur-sm border-2 border-red-400 pointer-events-auto"
       style={{
         left: position.x,
         top: position.y,
         transform: 'translate(-50%, -50%)',
+        touchAction: 'manipulation',
       }}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -80,7 +95,7 @@ export function SubtractMenu({ blockValue, position, onSelect, onClose }: Subtra
               backgroundColor: getNumberBlockColor(value),
               boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.2)',
             }}
-            onClick={() => onSelect(value)}
+            onClick={() => handleSelect(value)}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -91,7 +106,7 @@ export function SubtractMenu({ blockValue, position, onSelect, onClose }: Subtra
 
       {/* Result preview */}
       <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600 text-center text-xs text-gray-500 dark:text-gray-400">
-        Click a number to split
+        {isCapped ? `Showing 1-20 of ${blockValue - 1}` : 'Tap a number to split'}
       </div>
     </motion.div>
   );

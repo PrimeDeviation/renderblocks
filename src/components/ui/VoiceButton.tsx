@@ -58,7 +58,7 @@ export function VoiceButton({
   className,
 }: VoiceButtonProps) {
   return (
-    <div className={cn('relative', className)}>
+    <div className={cn('relative pointer-events-auto', className)}>
       {/* Pulsing background when listening */}
       <AnimatePresence>
         {isListening && (

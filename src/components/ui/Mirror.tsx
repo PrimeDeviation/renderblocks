@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useRef, useState, useCallback } from 'react';
-import { CUBE_SIZE, getNumberBlockColor, type Position } from '../../types';
+import { CUBE_SIZE, getNumberBlockColor, getBlockDimensions, type Position } from '../../types';
 
 interface MirrorProps {
   /** Values 1-10 to display as spawnable blocks */
@@ -45,11 +45,22 @@ function SpawnableBlock({ value, onDragOut }: SpawnableBlockProps) {
       );
 
       if (distance > 50) {
-        // Spawn a new block at the drop position
-        onDragOut(value, {
-          x: info.point.x - CUBE_SIZE / 2,
-          y: info.point.y - CUBE_SIZE / 2,
-        });
+        // Spawn a new block at the drop position, oriented by bottom
+        const dims = getBlockDimensions(value);
+
+        // Calculate initial position (centered horizontally, bottom at drop point)
+        let x = info.point.x - dims.width / 2;
+        let y = info.point.y - dims.height;
+
+        // Clamp to screen bounds (with small margin)
+        const margin = 10;
+        const maxX = window.innerWidth - dims.width - margin;
+        const maxY = window.innerHeight - dims.height - margin;
+
+        x = Math.max(margin, Math.min(x, maxX));
+        y = Math.max(margin, Math.min(y, maxY));
+
+        onDragOut(value, { x, y });
       }
     },
     [value, onDragOut]
@@ -137,7 +148,7 @@ export function Mirror({
 
   return (
     <motion.div
-      className={`mirror relative p-4 ${className}`}
+      className={`mirror relative p-4 pointer-events-auto ${className}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}

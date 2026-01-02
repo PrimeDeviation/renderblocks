@@ -5,12 +5,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    host: true, // Allow external connections (needed for ngrok)
+    allowedHosts: ['.ngrok-free.dev', '.ngrok.io'],
+  },
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon-32x32.png', 'favicon-16x16.png', 'apple-touch-icon.png', 'logo.png'],
       manifest: {
         name: 'RenderBlocks',
         short_name: 'RenderBlocks',
