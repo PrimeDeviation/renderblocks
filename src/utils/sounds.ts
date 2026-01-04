@@ -11,6 +11,7 @@ function getAudioContext(): AudioContext {
 
 // Bloop sound for addition (blocks combining)
 export function playAdditionSound(): void {
+  resumeAudioContext();
   const ctx = getAudioContext();
   const now = ctx.currentTime;
 
@@ -51,6 +52,7 @@ export function playAdditionSound(): void {
 
 // Drop, bounce, and shimmer sound for subtraction (blocks splitting)
 export function playSubtractionSound(): void {
+  resumeAudioContext();
   const ctx = getAudioContext();
   const now = ctx.currentTime;
 
@@ -155,6 +157,9 @@ preloadGulpSound();
 
 // Sneeze sound for sneeze-based splitting
 export function playSneezeSound(): void {
+  // Ensure audio context is resumed (required on mobile after user interaction)
+  resumeAudioContext();
+
   // Try to play the audio file directly, fall back if it fails
   if (sneezeAudio) {
     sneezeAudio.currentTime = 0;
@@ -242,6 +247,7 @@ export function resumeAudioContext(): void {
 
 // Gulp sound for trash can (Big Tum eating blocks)
 export function playGulpSound(): void {
+  resumeAudioContext();
   if (gulpAudio) {
     gulpAudio.currentTime = 0;
     gulpAudio.play().catch(() => {
