@@ -1,8 +1,8 @@
 import { motion, type PanInfo } from 'framer-motion';
-import { useMemo, useRef, useState, useEffect, type RefObject } from 'react';
+import { useRef, useState, useEffect, type RefObject } from 'react';
 import {
-  CUBE_SIZE,
-  CUBE_GAP,
+  getCubeSize,
+  getCubeGap,
   getNumberBlockColor,
   getBlockDimensions,
   type Position,
@@ -25,7 +25,7 @@ interface NumberBlockProps {
 }
 
 // Helper: get positions for a sub-block (used for tens/units remainder)
-function getSubBlockPositions(count: number, offsetX: number, offsetY: number): Position[] {
+function getSubBlockPositions(count: number, offsetX: number, offsetY: number, cubeSize: number, cubeGap: number): Position[] {
   const positions: Position[] = [];
   if (count === 0) return positions;
 
@@ -36,8 +36,8 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
       const row = Math.floor(i / 2);
       const col = i % 2;
       positions.push({
-        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
-        y: offsetY + (1 - row) * (CUBE_SIZE + CUBE_GAP),
+        x: offsetX + col * (cubeSize + cubeGap),
+        y: offsetY + (1 - row) * (cubeSize + cubeGap),
       });
     }
   } else if (count === 7) {
@@ -45,7 +45,7 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
     for (let i = 0; i < count; i++) {
       positions.push({
         x: offsetX,
-        y: offsetY + (count - 1 - i) * (CUBE_SIZE + CUBE_GAP),
+        y: offsetY + (count - 1 - i) * (cubeSize + cubeGap),
       });
     }
   } else if (count === 9) {
@@ -54,8 +54,8 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
       const row = Math.floor(i / 3);
       const col = i % 3;
       positions.push({
-        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
-        y: offsetY + (2 - row) * (CUBE_SIZE + CUBE_GAP),
+        x: offsetX + col * (cubeSize + cubeGap),
+        y: offsetY + (2 - row) * (cubeSize + cubeGap),
       });
     }
   } else if (count <= 5) {
@@ -63,7 +63,7 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
     for (let i = 0; i < count; i++) {
       positions.push({
         x: offsetX,
-        y: offsetY + (count - 1 - i) * (CUBE_SIZE + CUBE_GAP),
+        y: offsetY + (count - 1 - i) * (cubeSize + cubeGap),
       });
     }
   } else {
@@ -75,8 +75,8 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
       const row = Math.floor(i / cols);
       const col = i % cols;
       positions.push({
-        x: offsetX + col * (CUBE_SIZE + CUBE_GAP),
-        y: offsetY + (rows - 1 - row) * (CUBE_SIZE + CUBE_GAP),
+        x: offsetX + col * (cubeSize + cubeGap),
+        y: offsetY + (rows - 1 - row) * (cubeSize + cubeGap),
       });
     }
   }
@@ -84,10 +84,10 @@ function getSubBlockPositions(count: number, offsetX: number, offsetY: number): 
 }
 
 // Generate cube positions for a given value
-function getCubePositions(value: number): Position[] {
+function getCubePositions(value: number, cubeSize: number, cubeGap: number): Position[] {
   // For values < 100, use simple layouts
   if (value < 100) {
-    return getSubBlockPositions(value, 0, 0);
+    return getSubBlockPositions(value, 0, 0, cubeSize, cubeGap);
   }
 
   // For values 100-999: arrange hundreds as 10×10 squares
@@ -96,8 +96,8 @@ function getCubePositions(value: number): Position[] {
   const tensAndUnits = value % 100;
 
   // Size of a 10×10 hundred-square (including internal gaps)
-  const hundredSquareSize = 10 * CUBE_SIZE + 9 * CUBE_GAP;
-  const hundredSquareSpacing = hundredSquareSize + CUBE_GAP * 2; // gap between squares
+  const hundredSquareSize = 10 * cubeSize + 9 * cubeGap;
+  const hundredSquareSpacing = hundredSquareSize + cubeGap * 2; // gap between squares
 
   // Arrange hundred-squares: stack vertically for 1-3, then use columns
   let hundredCols = 1;
@@ -117,16 +117,16 @@ function getCubePositions(value: number): Position[] {
     const cubeCol = posInHundred % 10;
 
     positions.push({
-      x: hCol * hundredSquareSpacing + cubeCol * (CUBE_SIZE + CUBE_GAP),
-      y: (hundredRows - 1 - hRow) * hundredSquareSpacing + (9 - cubeRow) * (CUBE_SIZE + CUBE_GAP),
+      x: hCol * hundredSquareSpacing + cubeCol * (cubeSize + cubeGap),
+      y: (hundredRows - 1 - hRow) * hundredSquareSpacing + (9 - cubeRow) * (cubeSize + cubeGap),
     });
   }
 
   // Add remainder (tens + units) to the right of the hundreds
   if (tensAndUnits > 0) {
-    const remainderOffsetX = hundredCols * hundredSquareSpacing + CUBE_GAP * 2;
+    const remainderOffsetX = hundredCols * hundredSquareSpacing + cubeGap * 2;
     // Align remainder to bottom of the hundreds area
-    const remainderPositions = getSubBlockPositions(tensAndUnits, remainderOffsetX, 0);
+    const remainderPositions = getSubBlockPositions(tensAndUnits, remainderOffsetX, 0, cubeSize, cubeGap);
     positions.push(...remainderPositions);
   }
 
@@ -418,11 +418,26 @@ export function NumberBlock({
   onDragEnd,
   onRightClick,
 }: NumberBlockProps) {
+  // Get dynamic cube dimensions based on viewport
+  const cubeSize = getCubeSize();
+  const cubeGap = getCubeGap();
+
   const dimensions = getBlockDimensions(value);
-  const cubePositions = useMemo(() => getCubePositions(value), [value]);
+  // Recalculate positions each render (cube size is viewport-dependent)
+  const cubePositions = getCubePositions(value, cubeSize, cubeGap);
 
   // Track the position at drag start
   const dragStartPos = useRef<Position>(position);
+
+  // Track if we're currently dragging (to avoid syncing position during drag)
+  const [localIsDragging, setLocalIsDragging] = useState(false);
+
+  // Sync dragStartPos when position changes externally (NOT during drag)
+  useEffect(() => {
+    if (!localIsDragging) {
+      dragStartPos.current = position;
+    }
+  }, [position.x, position.y, localIsDragging]);
 
   // Cooldown state - block ignores input briefly after creation
   const [isInCooldown, setIsInCooldown] = useState(() => Date.now() - createdAt < BLOCK_COOLDOWN_MS);
@@ -460,6 +475,7 @@ export function NumberBlock({
   const starEyes = (value === 5 || value === 50) ? 'blue' : (value === 10 || value === 100) ? 'red' : false;
 
   const handleDragStart = () => {
+    setLocalIsDragging(true);
     dragStartPos.current = position;
     onDragStart?.(id);
   };
@@ -479,6 +495,7 @@ export function NumberBlock({
     _event: MouseEvent | TouchEvent | PointerEvent,
     info: PanInfo
   ) => {
+    setLocalIsDragging(false);
     const finalPos = {
       x: dragStartPos.current.x + info.offset.x,
       y: dragStartPos.current.y + info.offset.y,
@@ -499,10 +516,10 @@ export function NumberBlock({
       className={`absolute touch-target no-select drag-none cursor-grab active:cursor-grabbing ${isInCooldown ? 'pointer-events-none' : 'pointer-events-auto'}`}
       onContextMenu={handleContextMenu}
       style={{
-        width: dimensions.width,
-        height: dimensions.height,
         x: position.x,
         y: position.y,
+        width: dimensions.width,
+        height: dimensions.height,
         // Using boxShadow instead of filter to avoid Framer Motion NaN animation bug
         boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
       }}

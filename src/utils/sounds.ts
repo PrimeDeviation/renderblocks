@@ -119,26 +119,19 @@ export function playSubtractionSound(): void {
 
 // Cached audio element for sneeze sound
 let sneezeAudio: HTMLAudioElement | null = null;
-let sneezeSoundLoaded = false;
 
 // Cached audio element for gulp sound (trash can)
 let gulpAudio: HTMLAudioElement | null = null;
-let gulpSoundLoaded = false;
 
 // Preload the sneeze sound
 function preloadSneezeSound(): void {
   if (sneezeAudio) return;
 
-  sneezeAudio = new Audio('/sounds/sneeze.mp3');
+  sneezeAudio = new Audio('/sneeze.mp3');
   sneezeAudio.preload = 'auto';
   sneezeAudio.volume = 0.7;
 
-  sneezeAudio.addEventListener('canplaythrough', () => {
-    sneezeSoundLoaded = true;
-  });
-
   sneezeAudio.addEventListener('error', () => {
-    sneezeSoundLoaded = false;
     console.warn('Sneeze sound file not found, using synthesized sound');
   });
 }
@@ -151,12 +144,7 @@ function preloadGulpSound(): void {
   gulpAudio.preload = 'auto';
   gulpAudio.volume = 0.7;
 
-  gulpAudio.addEventListener('canplaythrough', () => {
-    gulpSoundLoaded = true;
-  });
-
   gulpAudio.addEventListener('error', () => {
-    gulpSoundLoaded = false;
     console.warn('Gulp sound file not found');
   });
 }
@@ -167,8 +155,8 @@ preloadGulpSound();
 
 // Sneeze sound for sneeze-based splitting
 export function playSneezeSound(): void {
-  // Try to play the audio file first
-  if (sneezeSoundLoaded && sneezeAudio) {
+  // Try to play the audio file directly, fall back if it fails
+  if (sneezeAudio) {
     sneezeAudio.currentTime = 0;
     sneezeAudio.play().catch(() => {
       // If audio file fails, fall back to synthesized
@@ -254,7 +242,7 @@ export function resumeAudioContext(): void {
 
 // Gulp sound for trash can (Big Tum eating blocks)
 export function playGulpSound(): void {
-  if (gulpSoundLoaded && gulpAudio) {
+  if (gulpAudio) {
     gulpAudio.currentTime = 0;
     gulpAudio.play().catch(() => {
       // Silent fail - no fallback synth sound for gulp

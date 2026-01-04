@@ -7,8 +7,6 @@ import { useNumberBlocks, useVoiceInput, useDarkMode } from './hooks';
 import { getBlockDimensions, type Position, type NumberBlock as NumberBlockType } from './types';
 import { throttle, playSneezeSound, playAdditionSound, playGulpSound } from './utils';
 
-// Minimum screen width to show sneeze menu (tablet and larger)
-const SNEEZE_MIN_WIDTH = 768;
 
 // State for the subtract menu
 interface SubtractMenuState {
@@ -94,12 +92,11 @@ function App() {
   // Track last pointer position for trash detection
   const lastPointerPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Zoom state for the playground (default 1.0 for testing)
-  const [zoom, setZoom] = useState(1.0);
-
-  // Calculate drag constraints - must account for scale transform
-  // Block positions are in scaled coords, screen edge in scaled coords = screen / zoom
+  // Window size for drag constraints
   const [windowSize, setWindowSize] = useState({ width: 1920, height: 1080 });
+
+  // Key that increments on orientation change to force block remount (resets Framer Motion drag state)
+  const [orientationKey, setOrientationKey] = useState(0);
 
   useEffect(() => {
     let resizeTimeout: ReturnType<typeof setTimeout>;
@@ -110,60 +107,93 @@ function App() {
         setWindowSize({ width: window.innerWidth, height: window.innerHeight });
       }, 100);
     };
+    // For orientation changes, use a longer delay to ensure dimensions are updated
+    const handleOrientationChange = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        // Update both together - remount happens, then reposition effect fixes positions
+        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+        setOrientationKey(prev => prev + 1);
+      }, 300);
+    };
     // Set initial size immediately
     setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', handleOrientationChange);
     return () => {
       clearTimeout(resizeTimeout);
       window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', handleOrientationChange);
     };
   }, []);
 
-  // Auto-zoom disabled for debugging
-  // TODO: Re-enable after fixing render loop
-  /*
-  const zoomRef = useRef(zoom);
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+  // Keep a ref to blocks so reposition effect doesn't re-run on every block change
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
 
-  useEffect(() => {
-    if (blocks.length === 0) return;
-    let maxWidth = 0;
-    let maxHeight = 0;
-    for (const block of blocks) {
+  // Track previous window size to detect actual dimension changes
+  const prevWindowSize = useRef({ width: windowSize.width, height: windowSize.height });
+
+  // Helper function to reposition blocks within bounds
+  const repositionBlocks = useCallback(() => {
+    const margin = 10;
+    const topMargin = 40;
+    const currentWidth = window.innerWidth;
+    const currentHeight = window.innerHeight;
+
+    blocksRef.current.forEach((block) => {
       const dims = getBlockDimensions(block.value);
-      maxWidth = Math.max(maxWidth, dims.width);
-      maxHeight = Math.max(maxHeight, dims.height);
+      const maxX = Math.max(margin, currentWidth - dims.width - margin);
+      const maxY = Math.max(topMargin, currentHeight - dims.height - margin);
+
+      const clampedX = Math.max(margin, Math.min(block.position.x, maxX));
+      const clampedY = Math.max(topMargin, Math.min(block.position.y, maxY));
+
+      if (clampedX !== block.position.x || clampedY !== block.position.y) {
+        updateBlockPosition(block.id, { x: clampedX, y: clampedY });
+      }
+    });
+  }, [updateBlockPosition]);
+
+  // Reposition blocks when viewport dimensions actually change
+  useEffect(() => {
+    // Only run if dimensions actually changed
+    if (
+      prevWindowSize.current.width === windowSize.width &&
+      prevWindowSize.current.height === windowSize.height
+    ) {
+      return;
     }
-    const margin = 40;
-    const requiredWidth = maxWidth + margin;
-    const requiredHeight = maxHeight + margin;
-    const zoomForWidth = windowSize.width / requiredWidth;
-    const zoomForHeight = windowSize.height / requiredHeight;
-    const minZoomNeeded = Math.min(zoomForWidth, zoomForHeight);
-    const currentZoom = zoomRef.current;
-    if (minZoomNeeded < 1.0 && minZoomNeeded < currentZoom - 0.01) {
-      const newZoom = Math.max(0.3, minZoomNeeded);
-      setZoom(newZoom);
-    }
-  }, [blocks, windowSize]);
-  */
+    prevWindowSize.current = { width: windowSize.width, height: windowSize.height };
+    repositionBlocks();
+  }, [windowSize.width, windowSize.height, repositionBlocks]);
+
+  // Re-run reposition AFTER orientation key change causes blocks to remount
+  // This is the main mechanism for bringing off-screen blocks back
+  useEffect(() => {
+    if (orientationKey === 0) return; // Skip initial mount
+
+    // Delay to ensure blocks have fully remounted and rendered with fresh Framer Motion state
+    const timer = setTimeout(repositionBlocks, 50);
+    return () => clearTimeout(timer);
+  }, [orientationKey, repositionBlocks]);
 
   // Calculate drag constraints for a specific block value
   // All edges constrained so no part of the block can leave the screen
   const getDragConstraints = useCallback((blockValue: number) => {
     const dims = getBlockDimensions(blockValue);
     // Ensure constraints are never negative (block larger than screen)
-    const right = Math.max(0, windowSize.width / zoom - dims.width);
-    const bottom = Math.max(0, windowSize.height / zoom - dims.height);
+    const right = Math.max(0, windowSize.width - dims.width);
+    const bottom = Math.max(0, windowSize.height - dims.height);
+    // Top constraint accounts for the number label above the block (-top-10 = 40px)
+    const top = 40;
     return {
       left: 0,
-      top: 0,
+      top,
       right,
       bottom,
     };
-  }, [windowSize, zoom]);
+  }, [windowSize]);
 
 
   // Track pointer position for trash can detection
@@ -202,21 +232,6 @@ function App() {
     };
   }, []);
 
-  // Handle mouse wheel zoom (scroll wheel zooms the playground)
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom((z) => Math.min(1.5, Math.max(0.5, z + delta)));
-  }, []);
-
-  // Zoom controls
-  const zoomIn = useCallback(() => {
-    setZoom((z) => Math.min(1.5, z + 0.1));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setZoom((z) => Math.max(0.5, z - 0.1));
-  }, []);
 
   // Handle spawning from mirror - check for immediate combine
   const handleSpawn = useCallback(
@@ -255,11 +270,12 @@ function App() {
           const centerY = (spawnBox.y + spawnBox.height / 2 + blockBox.y + blockBox.height / 2) / 2;
 
           const margin = 10;
+          const topMargin = 40; // Account for number label above block
           const maxX = window.innerWidth - newDims.width - margin;
           const maxY = window.innerHeight - newDims.height - margin;
 
           const newX = Math.max(margin, Math.min(centerX - newDims.width / 2, maxX));
-          const newY = Math.max(margin, Math.min(centerY - newDims.height / 2, maxY));
+          const newY = Math.max(topMargin, Math.min(centerY - newDims.height / 2, maxY));
 
           removeBlock(block.id);
           addBlock(newValue, { x: newX, y: newY });
@@ -290,10 +306,11 @@ function App() {
 
   const handleDrag = useCallback(
     (id: string, position: Position) => {
-      updateBlockPosition(id, position);
-      throttledCheckOverlap(id, position); // Throttled overlap check
+      // Don't update position state during drag - Framer Motion handles the visual
+      // Only check for overlaps (for showing + sign)
+      throttledCheckOverlap(id, position);
     },
-    [updateBlockPosition, throttledCheckOverlap]
+    [throttledCheckOverlap]
   );
 
   const handleDragEnd = useCallback(
@@ -413,9 +430,6 @@ function App() {
     [blocks, splitBlock, addBlock, removeBlock]
   );
 
-  // Check if screen is large enough for sneeze menu
-  const showSneezeMenu = windowSize.width >= SNEEZE_MIN_WIDTH;
-
   return (
     <AppShell
       header={
@@ -423,58 +437,19 @@ function App() {
           {/* Logo */}
           <div className="flex items-center gap-3">
             <motion.div
-              className="flex gap-0.5"
+              className="w-10 h-10 rounded-full overflow-hidden bg-gray-400"
               animate={{ rotate: [0, 2, -2, 0] }}
               transition={{ duration: 3, repeat: Infinity }}
             >
-              {[1, 2, 3].map((n) => (
-                <div
-                  key={n}
-                  className="w-4 h-4 rounded-sm"
-                  style={{
-                    backgroundColor:
-                      n === 1 ? '#FF0000' : n === 2 ? '#FF8C00' : '#FFD700',
-                  }}
-                />
-              ))}
+              <img src="/logo.png" alt="RenderBlocks" className="w-full h-full object-cover" />
             </motion.div>
             <span className={`text-xl font-bold hidden sm:inline ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>
               RenderBlocks
             </span>
           </div>
 
-          {/* Zoom controls, block count, and dark mode toggle */}
+          {/* Block count and dark mode toggle */}
           <div className="flex items-center gap-4 pointer-events-auto">
-            {/* Zoom controls */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={zoomOut}
-                className={`w-10 h-10 rounded-full text-2xl font-bold transition-colors ${
-                  isDark
-                    ? 'bg-gray-700 text-white hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                } ${zoom <= 0.5 ? 'opacity-50' : ''}`}
-                disabled={zoom <= 0.5}
-                aria-label="Zoom out"
-              >
-                −
-              </button>
-              <span className={`text-sm w-12 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {Math.round(zoom * 100)}%
-              </span>
-              <button
-                onClick={zoomIn}
-                className={`w-10 h-10 rounded-full text-2xl font-bold transition-colors ${
-                  isDark
-                    ? 'bg-gray-700 text-white hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                } ${zoom >= 1.5 ? 'opacity-50' : ''}`}
-                disabled={zoom >= 1.5}
-                aria-label="Zoom in"
-              >
-                +
-              </button>
-            </div>
             <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               {blocks.length} block{blocks.length !== 1 ? 's' : ''}
             </div>
@@ -515,71 +490,48 @@ function App() {
             />
           </div>
 
-          {/* Trash can and Sneeze menu (right side, large screens only) */}
-          {showSneezeMenu ? (
-            <div className="flex items-end gap-2">
-              <TrashCan ref={trashCanRef} />
-              <SneezeMenu blocks={blocks} onSneeze={handleSneeze} />
-            </div>
-          ) : (
-            <div className="w-32" /> // Spacer to maintain layout on small screens
-          )}
+          {/* Trash can and Sneeze menu (right side) */}
+          <div className="flex items-end gap-2">
+            <TrashCan ref={trashCanRef} />
+            <SneezeMenu blocks={blocks} onSneeze={handleSneeze} />
+          </div>
         </div>
       }
     >
       {/* Main playground area */}
       <div
+        ref={playgroundRef}
         className="relative w-full h-full overflow-hidden"
         style={{ touchAction: 'none' }}
-        onWheel={handleWheel}
       >
-        {/* Constraint boundary - viewport sized for screen-edge constraints */}
-        <div
-          ref={playgroundRef}
-          className="absolute inset-0"
-          style={{
-            pointerEvents: 'none',
-          }}
-        />
-        {/* Scaled container for blocks - pointer-events:none so empty space is inert */}
-        <div
-          className="absolute origin-top-left"
-          style={{
-            transform: `scale(${zoom})`,
-            width: `${100 / zoom}%`,
-            height: `${100 / zoom}%`,
-            pointerEvents: 'none',
-          }}
-        >
-          {/* Blocks */}
-          <AnimatePresence>
-            {blocks.map((block) => (
-              <NumberBlock
-                key={block.id}
-                id={block.id}
-                value={block.value}
-                position={block.position}
-                createdAt={block.createdAt}
-                isDragging={block.isDragging}
-                dragConstraints={getDragConstraints(block.value)}
-                onDragStart={handleDragStart}
-                onDrag={handleDrag}
-                onDragEnd={handleDragEnd}
-                onRightClick={handleRightClick}
-              />
-            ))}
-          </AnimatePresence>
+        {/* Blocks */}
+        <AnimatePresence>
+          {blocks.map((block) => (
+            <NumberBlock
+              key={`${block.id}-${orientationKey}`}
+              id={block.id}
+              value={block.value}
+              position={block.position}
+              createdAt={block.createdAt}
+              isDragging={block.isDragging}
+              dragConstraints={getDragConstraints(block.value)}
+              onDragStart={handleDragStart}
+              onDrag={handleDrag}
+              onDragEnd={handleDragEnd}
+              onRightClick={handleRightClick}
+            />
+          ))}
+        </AnimatePresence>
 
-          {/* Addition sign when blocks overlap */}
-          <AnimatePresence>
-            {pendingCombination && (
-              <AdditionSign
-                x={pendingCombination.position.x}
-                y={pendingCombination.position.y}
-              />
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Addition sign when blocks overlap */}
+        <AnimatePresence>
+          {pendingCombination && (
+            <AdditionSign
+              x={pendingCombination.position.x}
+              y={pendingCombination.position.y}
+            />
+          )}
+        </AnimatePresence>
 
         {/* Subtract menu (right-click) */}
         <AnimatePresence>

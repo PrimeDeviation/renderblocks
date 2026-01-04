@@ -5,10 +5,10 @@ interface TrashCanProps {
   className?: string;
 }
 
-// Big Tum - blob with eye stalks and angular > mouth
+// Big Tum - blob with eye stalks and angular > mouth (vh-based sizing)
 function BigTumIcon({ isEating }: { isEating: boolean }) {
   return (
-    <div className="relative w-16 h-20">
+    <div className="trash-icon">
       <svg
         viewBox="0 0 64 80"
         fill="none"
@@ -75,18 +75,18 @@ export const TrashCan = forwardRef<HTMLDivElement, TrashCanProps>(
     return (
       <motion.div
         ref={ref}
-        className={`trash-can relative p-4 pointer-events-auto ${className}`}
+        className={`trash-container relative pointer-events-auto ${className}`}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.35 }}
       >
         {/* Label */}
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full text-sm font-semibold text-green-600 dark:text-green-400 shadow-sm whitespace-nowrap">
+        <div className="trash-title">
           Trash
         </div>
 
         {/* Big Tum icon */}
-        <div className="pt-4 flex items-center justify-center min-h-[80px]">
+        <div className="trash-content">
           <BigTumIcon isEating={false} />
         </div>
       </motion.div>

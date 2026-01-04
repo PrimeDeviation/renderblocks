@@ -69,44 +69,57 @@ export type Block =
   | { type: 'number'; data: NumberBlock }
   | { type: 'letter'; data: LetterBlock };
 
-// Cube dimensions (each unit cube in a stack)
-export const CUBE_SIZE = 48; // pixels, matches touch target minimum
-export const CUBE_GAP = 2;   // small gap between stacked cubes
+// Cube dimensions - dynamic based on viewport (6vmin)
+// These functions return pixel values that match CSS vmin calculations
+export function getCubeSize(): number {
+  return Math.min(window.innerWidth, window.innerHeight) * 0.06; // 6vmin
+}
+
+export function getCubeGap(): number {
+  return Math.min(window.innerWidth, window.innerHeight) * 0.004; // 0.4vmin
+}
+
+// Legacy constants for backwards compatibility (used in some CSS)
+export const CUBE_SIZE = 48;
+export const CUBE_GAP = 2;
 export const FACE_SIZE = 32; // size of the face on top cube
 
 // Helper: get dimensions for a sub-block (values < 100)
 function getSubBlockDimensions(value: number): Size {
   if (value === 0) return { width: 0, height: 0 };
 
+  const cubeSize = getCubeSize();
+  const cubeGap = getCubeGap();
+
   // 4 is a 2x2 square
   if (value === 4) {
     return {
-      width: CUBE_SIZE * 2 + CUBE_GAP,
-      height: CUBE_SIZE * 2 + CUBE_GAP,
+      width: cubeSize * 2 + cubeGap,
+      height: cubeSize * 2 + cubeGap,
     };
   }
 
   // 7 is special - always vertical (rainbow tower)
   if (value === 7) {
     return {
-      width: CUBE_SIZE,
-      height: value * CUBE_SIZE + (value - 1) * CUBE_GAP,
+      width: cubeSize,
+      height: value * cubeSize + (value - 1) * cubeGap,
     };
   }
 
   // 9 is a 3x3 square
   if (value === 9) {
     return {
-      width: CUBE_SIZE * 3 + CUBE_GAP * 2,
-      height: CUBE_SIZE * 3 + CUBE_GAP * 2,
+      width: cubeSize * 3 + cubeGap * 2,
+      height: cubeSize * 3 + cubeGap * 2,
     };
   }
 
   // Blocks stack vertically for values 1-3, 5
   if (value <= 5) {
     return {
-      width: CUBE_SIZE,
-      height: value * CUBE_SIZE + (value - 1) * CUBE_GAP,
+      width: cubeSize,
+      height: value * cubeSize + (value - 1) * cubeGap,
     };
   }
 
@@ -118,8 +131,8 @@ function getSubBlockDimensions(value: number): Size {
   }
   const rows = Math.ceil(value / cols);
   return {
-    width: cols * CUBE_SIZE + (cols - 1) * CUBE_GAP,
-    height: rows * CUBE_SIZE + (rows - 1) * CUBE_GAP,
+    width: cols * cubeSize + (cols - 1) * cubeGap,
+    height: rows * cubeSize + (rows - 1) * cubeGap,
   };
 }
 
@@ -130,13 +143,16 @@ export function getBlockDimensions(value: number): Size {
     return getSubBlockDimensions(value);
   }
 
+  const cubeSize = getCubeSize();
+  const cubeGap = getCubeGap();
+
   // For values 100-999: hundreds as 10×10 squares + remainder
   const hundreds = Math.floor(value / 100);
   const tensAndUnits = value % 100;
 
   // Size of a 10×10 hundred-square
-  const hundredSquareSize = 10 * CUBE_SIZE + 9 * CUBE_GAP;
-  const hundredSquareSpacing = hundredSquareSize + CUBE_GAP * 2;
+  const hundredSquareSize = 10 * cubeSize + 9 * cubeGap;
+  const hundredSquareSpacing = hundredSquareSize + cubeGap * 2;
 
   // Arrange hundred-squares
   let hundredCols = 1;
@@ -145,8 +161,8 @@ export function getBlockDimensions(value: number): Size {
   const hundredRows = Math.ceil(hundreds / hundredCols);
 
   // Hundreds area dimensions
-  const hundredsWidth = hundredCols * hundredSquareSpacing - CUBE_GAP * 2;
-  const hundredsHeight = hundredRows * hundredSquareSpacing - CUBE_GAP * 2;
+  const hundredsWidth = hundredCols * hundredSquareSpacing - cubeGap * 2;
+  const hundredsHeight = hundredRows * hundredSquareSpacing - cubeGap * 2;
 
   // Remainder dimensions
   const remainderDims = getSubBlockDimensions(tensAndUnits);
@@ -157,7 +173,7 @@ export function getBlockDimensions(value: number): Size {
 
   if (tensAndUnits > 0) {
     // Remainder is to the right
-    totalWidth = hundredsWidth + CUBE_GAP * 4 + remainderDims.width;
+    totalWidth = hundredsWidth + cubeGap * 4 + remainderDims.width;
     // Height is max of hundreds and remainder
     totalHeight = Math.max(hundredsHeight, remainderDims.height);
   }

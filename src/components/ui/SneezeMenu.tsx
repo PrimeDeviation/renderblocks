@@ -42,10 +42,10 @@ function findBlockAtPoint(point: Position, blocks: NumberBlock[]): NumberBlock |
   return null;
 }
 
-// Cloud-like sneeze shape with number inside (sized to match mirror blocks)
+// Cloud-like sneeze shape with number inside (uses vh-based sizing via CSS)
 function SneezeCloud({ number, isDragging }: { number: 1 | 2; isDragging: boolean }) {
   return (
-    <div className="relative w-16 h-16">
+    <div className="sneeze-cloud">
       {/* Cloud/gust shape */}
       <svg
         viewBox="0 0 48 48"
@@ -105,8 +105,8 @@ function SneezeCloud({ number, isDragging }: { number: 1 | 2; isDragging: boolea
         />
       </svg>
       {/* Number inside the cloud */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-2xl font-bold text-blue-400 dark:text-blue-300" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>
+      <div className="sneeze-cloud-number">
+        <span className="sneeze-cloud-digit">
           {number}
         </span>
       </div>
@@ -192,7 +192,7 @@ function DraggableSneeze({ type, blocks, onSneeze }: Omit<DraggableSneezeProps, 
     <motion.div
       key={respawnKey} // Force remount when respawnKey changes
       ref={elementRef}
-      className="relative cursor-grab active:cursor-grabbing touch-target"
+      className="sneeze-draggable cursor-grab active:cursor-grabbing"
       drag={!isUsedUp}
       dragMomentum={false}
       dragElastic={0.5}
@@ -241,18 +241,18 @@ export function SneezeMenu({ blocks, onSneeze, className = '' }: SneezeMenuProps
 
   return (
     <motion.div
-      className={`sneeze-menu relative p-4 pointer-events-auto ${className}`}
+      className={`sneeze-container relative pointer-events-auto ${className}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
     >
-      {/* Menu label - matches mirror label style */}
-      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-gray-800/90 px-3 py-1 rounded-full text-sm font-semibold text-cyan-600 dark:text-cyan-400 shadow-sm whitespace-nowrap">
+      {/* Menu label */}
+      <div className="sneeze-title">
         Sneeze
       </div>
 
-      {/* Draggable sneezes in row, similar height to mirror */}
-      <div className="flex gap-4 pt-4 items-center justify-center min-h-[120px]">
+      {/* Draggable sneezes in row */}
+      <div className="sneeze-row">
         <DraggableSneeze
           type="sneeze1"
           blocks={blocks}

@@ -1,5 +1,9 @@
 # RenderBlocks - Claude Code Context
 
+## User Preferences
+- Always discuss proposed fixes and get approval before making code changes
+- Never jump to implementing fixes without confirming the approach first
+
 ## Project Overview
 RenderBlocks is an interactive children's educational game inspired by the **Numberblocks** animated series. Children can drag number blocks from a mirror palette, combine them (addition), and split them apart (subtraction).
 
@@ -101,6 +105,27 @@ npm run dev
 
 # Build for production
 npm run build
+```
+
+## Building Android APK
+IMPORTANT:
+- Always use clean builds to avoid caching issues
+- Always bump versionCode and versionName in `android/app/build.gradle` for each change
+- **ALWAYS commit after each version change** - Do not let work accumulate without commits
+```bash
+# From project root
+source ~/.nvm/nvm.sh && nvm use 22
+npm run build
+npx cap sync android
+
+# Build APK (always clean)
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export ANDROID_HOME=/home/primed/android-sdk
+cd android
+./gradlew clean assembleDebug
+
+# APK location: android/app/build/outputs/apk/debug/renderblocks-v1.0-debug.apk
+# Copy to Google Drive: /mnt/d/PrimeDSharedGDrive/RenderBlocks/
 ```
 
 ## Git Remotes

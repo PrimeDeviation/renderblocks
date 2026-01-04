@@ -1,13 +1,5 @@
 @import "tailwindcss";
 
-/* Safe area insets for mobile devices */
-html, body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-}
-
 @theme {
   /* Numberblocks official color palette */
   --color-nb-1: #FF0000;  /* Red */
@@ -36,10 +28,10 @@ html, body {
   --shadow-block-hover: 0 6px 0 0 rgba(0, 0, 0, 0.2);
   --shadow-mirror: inset 0 2px 20px rgba(255, 255, 255, 0.5), 0 4px 20px rgba(0, 0, 0, 0.1);
 
-  /* Cube dimensions */
-  --cube-size: 48px;
-  --cube-gap: 2px;
-  --face-size: 32px;
+  /* Cube dimensions - vmin-based for responsive scaling */
+  --cube-size: 6vmin;
+  --cube-gap: 0.4vmin;
+  --face-size: 4vmin;
 }
 
 @keyframes bounce-gentle {
@@ -129,11 +121,11 @@ html, body {
   .cube {
     width: var(--cube-size);
     height: var(--cube-size);
-    border-radius: 8px;
+    border-radius: 1vmin;
     position: relative;
     box-shadow:
-      inset 0 -4px 0 rgba(0, 0, 0, 0.2),
-      inset 0 4px 0 rgba(255, 255, 255, 0.3);
+      inset 0 -0.5vmin 0 rgba(0, 0, 0, 0.2),
+      inset 0 0.5vmin 0 rgba(255, 255, 255, 0.3);
   }
 
   /* Face on top cube */
@@ -148,20 +140,20 @@ html, body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 0.3vmin;
   }
 
   /* Eyes */
   .cube-eyes {
     display: flex;
-    gap: 6px;
-    margin-top: -4px;
+    gap: 0.8vmin;
+    margin-top: -0.5vmin;
     align-items: center;
   }
 
   .cube-eye {
-    width: 11px;
-    height: 15px;
+    width: 1.4vmin;
+    height: 1.9vmin;
     background: white;
     border-radius: 50%;
     position: relative;
@@ -171,8 +163,8 @@ html, body {
   .cube-eye::after {
     content: '';
     position: absolute;
-    width: 7px;
-    height: 7px;
+    width: 0.9vmin;
+    height: 0.9vmin;
     background: #333;
     border-radius: 50%;
     top: 50%;
@@ -182,23 +174,23 @@ html, body {
 
   /* Star eyes for 5 and 10 - star wrapper around normal eye */
   .cube-eye-star {
-    width: 22px;
-    height: 28px;
+    width: 2.8vmin;
+    height: 3.5vmin;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     /* Adjust spacing so inner eye matches normal eye positioning */
-    margin-left: -5.5px;
-    margin-right: -5.5px;
-    margin-top: -6.5px;
-    margin-bottom: -6.5px;
+    margin-left: -0.7vmin;
+    margin-right: -0.7vmin;
+    margin-top: -0.8vmin;
+    margin-bottom: -0.8vmin;
   }
 
   .cube-eye-star.star-red {
     /* 10's eyes slightly farther apart */
-    margin-left: -4.5px;
-    margin-right: -4.5px;
+    margin-left: -0.6vmin;
+    margin-right: -0.6vmin;
   }
 
   /* Star shape behind the eye */
@@ -220,8 +212,8 @@ html, body {
 
   /* Normal eye inside the star */
   .cube-eye-star .eye-inner {
-    width: 11px;
-    height: 15px;
+    width: 1.4vmin;
+    height: 1.9vmin;
     background: white;
     border-radius: 50%;
     position: relative;
@@ -232,8 +224,8 @@ html, body {
   .cube-eye-star .eye-inner::after {
     content: '';
     position: absolute;
-    width: 7px;
-    height: 7px;
+    width: 0.9vmin;
+    height: 0.9vmin;
     background: #333;
     border-radius: 50%;
     top: 50%;
@@ -243,15 +235,15 @@ html, body {
 
   /* Mouth - slightly curved, higher on one side */
   .cube-mouth {
-    width: 20px;
-    height: 6px;
+    width: 2.5vmin;
+    height: 0.8vmin;
     background: #333;
-    border-radius: 0 0 12px 8px;
-    margin-top: 4px;
+    border-radius: 0 0 1.5vmin 1vmin;
+    margin-top: 0.5vmin;
     transform: rotate(-3deg);
   }
 
-  /* Mirror spawner */
+  /* Mirror spawner - legacy class for backwards compat */
   .mirror {
     background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(200,220,255,0.8) 100%);
     border: 3px solid rgba(155, 93, 229, 0.5);
@@ -271,7 +263,202 @@ html, body {
     border-radius: 14px;
   }
 
-  /* Sneeze menu - matches mirror style with cyan theme */
+  /* ========================================
+     Mirror menu - vmin-based responsive sizing
+     6vmin cube size scales with smaller screen dimension
+     ======================================== */
+  .mirror-container {
+    background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(200,220,255,0.8) 100%);
+    border: 0.4vmin solid rgba(155, 93, 229, 0.5);
+    border-radius: 2vmin;
+    box-shadow: var(--shadow-mirror);
+    animation: pulse-glow 2s ease-in-out infinite;
+    backdrop-filter: blur(8px);
+    padding: 1.5vmin;
+    padding-top: 2.5vmin;
+  }
+
+  .mirror-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+    border-radius: 1.8vmin;
+    pointer-events: none;
+  }
+
+  .mirror-title {
+    position: absolute;
+    top: -1.5vmin;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    padding: 0.3vmin 1.2vmin;
+    border-radius: 2vmin;
+    font-size: 1.4vmin;
+    font-weight: 600;
+    color: #9333ea;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    white-space: nowrap;
+  }
+
+  .mirror-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1vmin;
+  }
+
+  .mirror-row {
+    display: flex;
+    gap: 0.8vmin;
+    align-items: flex-end;
+  }
+
+  .mirror-cube {
+    width: 6vmin;
+    height: 6vmin;
+    min-width: 6vmin;
+    min-height: 6vmin;
+  }
+
+  .mirror-cube-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 1vmin;
+    position: relative;
+    box-shadow:
+      inset 0 -0.5vmin 0 rgba(0, 0, 0, 0.2),
+      inset 0 0.5vmin 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .mirror-cube-face {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%;
+    height: 70%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3vmin;
+  }
+
+  .mirror-cube-eyes {
+    display: flex;
+    gap: 0.8vmin;
+    margin-top: -0.5vmin;
+    align-items: center;
+  }
+
+  .mirror-eye {
+    width: 1.4vmin;
+    height: 1.9vmin;
+    background: white;
+    border-radius: 50%;
+    position: relative;
+    border: 1px solid #333;
+  }
+
+  .mirror-eye::after {
+    content: '';
+    position: absolute;
+    width: 0.9vmin;
+    height: 0.9vmin;
+    background: #333;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Star eyes for mirror cubes */
+  .mirror-eye-star {
+    width: 2.8vmin;
+    height: 3.5vmin;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: -0.8vmin;
+  }
+
+  .mirror-eye-star::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  }
+
+  .mirror-eye-star.star-red::before {
+    background: #FF0000;
+  }
+
+  .mirror-eye-star.star-blue::before {
+    background: #0066FF;
+  }
+
+  .mirror-eye-inner {
+    width: 1.4vmin;
+    height: 1.9vmin;
+    background: white;
+    border-radius: 50%;
+    position: relative;
+    z-index: 1;
+    border: 1px solid #333;
+  }
+
+  .mirror-eye-inner::after {
+    content: '';
+    position: absolute;
+    width: 0.9vmin;
+    height: 0.9vmin;
+    background: #333;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .mirror-mouth {
+    width: 2.5vmin;
+    height: 0.8vmin;
+    background: #333;
+    border-radius: 0 0 1.5vmin 1vmin;
+    margin-top: 0.5vmin;
+    transform: rotate(-3deg);
+  }
+
+  .mirror-label-value {
+    position: absolute;
+    top: -2vmin;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.2vmin;
+    font-weight: 700;
+    color: #4b5563;
+  }
+
+  /* Dark mode for mirror-container */
+  .dark .mirror-container {
+    background: linear-gradient(135deg, rgba(30,30,50,0.9) 0%, rgba(40,50,80,0.8) 100%);
+    border-color: rgba(155, 93, 229, 0.7);
+  }
+
+  .dark .mirror-title {
+    background: rgba(30, 30, 50, 0.9);
+    color: #c4b5fd;
+  }
+
+  .dark .mirror-label-value {
+    color: #9ca3af;
+  }
+
+  /* Sneeze menu - legacy class for backwards compat */
   .sneeze-menu {
     background: linear-gradient(135deg, rgba(240,250,255,0.9) 0%, rgba(200,235,255,0.8) 100%);
     border: 3px solid rgba(34, 211, 238, 0.5);
@@ -291,10 +478,143 @@ html, body {
     pointer-events: none;
   }
 
+  /* ========================================
+     Sneeze menu - vmin-based responsive sizing
+     Matches mirror sizing proportions
+     ======================================== */
+  .sneeze-container {
+    background: linear-gradient(135deg, rgba(240,250,255,0.9) 0%, rgba(200,235,255,0.8) 100%);
+    border: 0.4vmin solid rgba(34, 211, 238, 0.5);
+    border-radius: 2vmin;
+    box-shadow: var(--shadow-mirror);
+    backdrop-filter: blur(8px);
+    padding: 1.5vmin;
+    padding-top: 2.5vmin;
+  }
+
+  .sneeze-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 4s linear infinite;
+    border-radius: 1.8vmin;
+    pointer-events: none;
+  }
+
+  .sneeze-title {
+    position: absolute;
+    top: -1.5vmin;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    padding: 0.3vmin 1.2vmin;
+    border-radius: 2vmin;
+    font-size: 1.4vmin;
+    font-weight: 600;
+    color: #0891b2;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    white-space: nowrap;
+  }
+
+  .sneeze-row {
+    display: flex;
+    gap: 1.5vmin;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sneeze-draggable {
+    position: relative;
+    width: 6vmin;
+    height: 6vmin;
+    min-width: 6vmin;
+    min-height: 6vmin;
+  }
+
+  .sneeze-cloud {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .sneeze-cloud-number {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sneeze-cloud-digit {
+    font-size: 2.5vmin;
+    font-weight: 700;
+    color: #60a5fa;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+  }
+
+  /* Dark mode for sneeze-container */
+  .dark .sneeze-container {
+    background: linear-gradient(135deg, rgba(30,40,50,0.9) 0%, rgba(40,60,80,0.8) 100%);
+    border-color: rgba(34, 211, 238, 0.7);
+  }
+
+  .dark .sneeze-title {
+    background: rgba(30, 30, 50, 0.9);
+    color: #22d3ee;
+  }
+
+  .dark .sneeze-cloud-digit {
+    color: #93c5fd;
+  }
+
+  /* ========================================
+     Trash can - vmin-based responsive sizing
+     Matches mirror/sneeze sizing proportions
+     ======================================== */
+  .trash-container {
+    padding: 1.5vmin;
+    padding-top: 2.5vmin;
+  }
+
+  .trash-title {
+    position: absolute;
+    top: -1.5vmin;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    padding: 0.3vmin 1.2vmin;
+    border-radius: 2vmin;
+    font-size: 1.4vmin;
+    font-weight: 600;
+    color: #16a34a;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    white-space: nowrap;
+  }
+
+  .trash-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .trash-icon {
+    position: relative;
+    width: 6vmin;
+    height: 7.5vmin;
+  }
+
+  /* Dark mode for trash */
+  .dark .trash-title {
+    background: rgba(30, 30, 50, 0.9);
+    color: #4ade80;
+  }
+
   /* Touch targets */
   .touch-target {
-    min-width: var(--cube-size);
-    min-height: var(--cube-size);
+    min-width: 6vmin;
+    min-height: 6vmin;
     cursor: pointer;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
@@ -321,3 +641,4 @@ html, body {
     user-drag: none;
   }
 }
+

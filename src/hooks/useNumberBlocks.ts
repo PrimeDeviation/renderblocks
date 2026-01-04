@@ -130,13 +130,14 @@ export function useNumberBlocks() {
 
     // Calculate position and clamp to screen bounds
     const margin = 10;
+    const topMargin = 40; // Account for number label above block
     const maxX = window.innerWidth - newDims.width - margin;
     const maxY = window.innerHeight - newDims.height - margin;
 
     let x = centerX - newDims.width / 2;
     let y = centerY - newDims.height / 2;
     x = Math.max(margin, Math.min(x, maxX));
-    y = Math.max(margin, Math.min(y, maxY));
+    y = Math.max(topMargin, Math.min(y, maxY));
 
     const newBlock: NumberBlock = {
       id: generateId(),
@@ -180,24 +181,69 @@ export function useNumberBlocks() {
 
     // Helper to clamp position to screen bounds
     const margin = 10;
-    const clamp = (pos: Position, dims: { width: number; height: number }): Position => {
-      const maxX = window.innerWidth - dims.width - margin;
-      const maxY = window.innerHeight - dims.height - margin;
-      return {
-        x: Math.max(margin, Math.min(pos.x, maxX)),
-        y: Math.max(margin, Math.min(pos.y, maxY)),
-      };
+    const topMargin = 40; // Account for number label above block
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    const clampX = (x: number, width: number): number => {
+      const maxX = Math.max(margin, screenWidth - width - margin);
+      return Math.max(margin, Math.min(x, maxX));
     };
 
-    // Create two new blocks side by side, clamped to screen
+    const clampY = (y: number, height: number): number => {
+      const maxY = Math.max(topMargin, screenHeight - height - margin);
+      return Math.max(topMargin, Math.min(y, maxY));
+    };
+
+    // Check if both blocks can fit side by side
+    const totalWidth = dims1.width + dims2.width + 20; // 20 = gap between blocks
+    const totalHeight = dims1.height + dims2.height + 20;
+    const canFitHorizontally = totalWidth <= screenWidth - margin * 2;
+    const canFitVertically = totalHeight <= screenHeight - topMargin - margin;
+
     const now = Date.now();
+    let pos1: Position;
+    let pos2: Position;
+
+    if (canFitHorizontally) {
+      // Side by side layout - position relative to original block
+      pos1 = {
+        x: clampX(block.position.x - 30, dims1.width),
+        y: clampY(block.position.y, dims1.height),
+      };
+      const minX2 = pos1.x + dims1.width + 10;
+      pos2 = {
+        x: clampX(Math.max(minX2, block.position.x + dims1.width + 10), dims2.width),
+        y: clampY(block.position.y, dims2.height),
+      };
+    } else if (canFitVertically) {
+      // Stack vertically on small screens
+      pos1 = {
+        x: clampX(block.position.x, dims1.width),
+        y: clampY(block.position.y, dims1.height),
+      };
+      // Ensure block2 doesn't overlap with block1
+      const minY2 = pos1.y + dims1.height + 10;
+      pos2 = {
+        x: clampX(block.position.x, dims2.width),
+        y: clampY(Math.max(minY2, block.position.y + dims1.height + 20), dims2.height),
+      };
+    } else {
+      // Emergency fallback: place in opposite corners
+      pos1 = {
+        x: margin,
+        y: topMargin,
+      };
+      pos2 = {
+        x: clampX(screenWidth - dims2.width - margin, dims2.width),
+        y: clampY(screenHeight - dims2.height - margin, dims2.height),
+      };
+    }
+
     const newBlock1: NumberBlock = {
       id: generateId(),
       value: remainingValue,
-      position: clamp({
-        x: block.position.x - 30,
-        y: block.position.y
-      }, dims1),
+      position: pos1,
       isDragging: false,
       createdAt: now,
     };
@@ -205,10 +251,7 @@ export function useNumberBlocks() {
     const newBlock2: NumberBlock = {
       id: generateId(),
       value: subtractValue,
-      position: clamp({
-        x: block.position.x + dims1.width + 10,
-        y: block.position.y
-      }, dims2),
+      position: pos2,
       isDragging: false,
       createdAt: now,
     };
